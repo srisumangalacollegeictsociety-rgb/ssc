@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    background:
+      radial-gradient(1100px 700px at 12% -10%, rgba(45, 134, 89, 0.35), transparent 60%),
+      radial-gradient(900px 600px at 110% 10%, rgba(233, 185, 73, 0.18), transparent 55%),
+      linear-gradient(160deg, #060f1f 0%, #0b1f3a 45%, #0f4c46 130%);
+  }
+  
+  h1, h2, h3, .font-heading {
+    font-family: 'Sora', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}

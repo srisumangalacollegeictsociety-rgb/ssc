@@ -92,7 +92,7 @@ export function PrintReport({
             Cadastral Distance Verification Map Area
           </h2>
           <span className="text-[11px] text-slate-500 font-medium">
-            Straight-line direct vector from SSC Gate
+            Circle Center: Applicant Residence · Radius: Distance to SSC ({distance ? `${distance.toFixed(0)}m` : '—'})
           </span>
         </div>
         
@@ -129,11 +129,14 @@ export function PrintReport({
           </tr>
           <tr className="border-b border-slate-200">
             <td className="py-2 px-3 font-semibold text-slate-700 align-top">
-              Schools Within Residence Radius ({nearbySchools.length})
+              Schools Closer Than Sri Sumangala College ({nearbySchools.length})
+              <span className="block text-[10px] text-slate-500 font-normal">
+                (Located inside residence-centered circle)
+              </span>
             </td>
             <td className="py-2 px-3 text-slate-900">
               {nearbySchools.length === 0 ? (
-                <span className="text-emerald-700 font-medium">None within this radius (0 deductions)</span>
+                <span className="text-emerald-700 font-medium">None closer than SSC (0 deductions)</span>
               ) : (
                 <div className="flex flex-wrap gap-1.5 py-1">
                   {nearbySchools.map((school, idx) => (

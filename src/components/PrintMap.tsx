@@ -203,7 +203,7 @@ export function PrintMap({
               stroke="#ffffff"
               strokeWidth="2.5"
             >
-              Admissions Check Radius ({distance ? `${distance.toFixed(0)} m` : ''})
+              Proximity Radius Boundary (Center: Residence · Radius: {distance ? `${distance.toFixed(0)} m` : ''})
             </text>
           </g>
         )}
@@ -375,7 +375,7 @@ export function PrintMap({
                 fontSize="9"
                 fontWeight="bold"
               >
-                ● Applicant Residence (නිවස)
+                ● Applicant Residence (Circle Center)
               </text>
               <text
                 x="0"
@@ -438,25 +438,25 @@ export function PrintMap({
           <g transform="translate(10, 14)">
             <circle cx="5" cy="0" r="4" fill="#15803d" />
             <text x="14" y="3" fill="#1f2937" fontSize="8" fontWeight="medium">
-              Sri Sumangala College (Center)
+              Sri Sumangala College (Destination)
             </text>
           </g>
           <g transform="translate(10, 28)">
             <circle cx="5" cy="0" r="4" fill="#dc2626" />
             <text x="14" y="3" fill="#1f2937" fontSize="8" fontWeight="medium">
-              Applicant Residence
+              Applicant Residence (Circle Center)
             </text>
           </g>
           <g transform="translate(130, 14)">
             <circle cx="5" cy="0" r="3.5" fill="#ea580c" />
             <text x="14" y="3" fill="#1f2937" fontSize="8" fontWeight="medium">
-              Schools Within Radius
+              Closer Schools (Deductions)
             </text>
           </g>
           <g transform="translate(130, 28)">
             <line x1="0" y1="0" x2="10" y2="0" stroke="#047857" strokeWidth="2" strokeDasharray="3 2" />
             <text x="14" y="3" fill="#1f2937" fontSize="8" fontWeight="medium">
-              Straight-Line Path
+              Radius Vector (Distance)
             </text>
           </g>
         </g>

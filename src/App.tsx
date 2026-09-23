@@ -65,19 +65,20 @@ export default function App() {
     );
   }, [residence]);
 
-  // Find schools within the radius from Sri Sumangala College
+  // Find schools closer to applicant residence than Sri Sumangala College (inside residence-centered circle)
   const nearbySchools = useMemo(() => {
-    if (distance === null) return [];
+    if (!residence || distance === null) return [];
     return SCHOOL_DATA.filter((s) => {
-      const d = calculateGreatCircleDistance(
-        SRI_SUMANGALA_CENTER.lat,
-        SRI_SUMANGALA_CENTER.lng,
+      const dFromResidence = calculateGreatCircleDistance(
+        residence.lat,
+        residence.lng,
         s.lat,
         s.lng
       );
-      return d <= distance;
+      // A school is closer if its distance to residence is less than distance to SSC
+      return dFromResidence < distance;
     });
-  }, [distance]);
+  }, [residence, distance]);
 
   // Marks Calculation
   const categoryRule = CATEGORY_RULES[category];
@@ -291,7 +292,7 @@ export default function App() {
 
               {/* Google Map Container with explicit CSS height */}
               <div className="w-full h-[540px] md:h-[600px] rounded-xl overflow-hidden border border-white/15 relative bg-[#0a1626]">
-                <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['geometry']}>
+                <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={[]}>
                   <Map
                     defaultCenter={{ lat: SRI_SUMANGALA_CENTER.lat, lng: SRI_SUMANGALA_CENTER.lng }}
                     defaultZoom={15}
@@ -300,6 +301,7 @@ export default function App() {
                     onClick={handleMapClick}
                     gestureHandling="greedy"
                     disableDefaultUI={false}
+                    clickableIcons={false}
                     internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
                     className="w-full h-full"
                   >
@@ -334,14 +336,18 @@ export default function App() {
 
                     {/* Surrounding Schools Markers */}
                     {SCHOOL_DATA.map((school, i) => {
+                      const distFromRes = residence
+                        ? calculateGreatCircleDistance(
+                            residence.lat,
+                            residence.lng,
+                            school.lat,
+                            school.lng
+                          )
+                        : null;
                       const isCloser =
+                        distFromRes !== null &&
                         distance !== null &&
-                        calculateGreatCircleDistance(
-                          SRI_SUMANGALA_CENTER.lat,
-                          SRI_SUMANGALA_CENTER.lng,
-                          school.lat,
-                          school.lng
-                        ) <= distance;
+                        distFromRes < distance;
 
                       return (
                         <AdvancedMarker
@@ -371,27 +377,73 @@ export default function App() {
                         <div className="p-1 text-slate-900 max-w-xs">
                           <h4 className="font-bold text-xs text-[#0b1f3a]">{selectedSchool.en}</h4>
                           <p className="text-xs text-slate-600 mt-0.5">{selectedSchool.name}</p>
-                          <p className="text-[11px] text-slate-500 mt-1">
-                            Distance from SSC:{' '}
-                            {(
-                              calculateGreatCircleDistance(
-                                SRI_SUMANGALA_CENTER.lat,
-                                SRI_SUMANGALA_CENTER.lng,
-                                selectedSchool.lat,
-                                selectedSchool.lng
-                              )
-                            ).toFixed(0)}{' '}
-                            m
-                          </p>
+                          <div className="text-[11px] text-slate-600 mt-1 space-y-1">
+                            {residence && distance !== null ? (
+                              <>
+                                <p className="font-semibold text-slate-800">
+                                  Distance to Residence (Center):{' '}
+                                  {calculateGreatCircleDistance(
+                                    residence.lat,
+                                    residence.lng,
+                                    selectedSchool.lat,
+                                    selectedSchool.lng
+                                  ).toFixed(0)}{' '}
+                                  m
+                                </p>
+                                <p>
+                                  Distance to SSC:{' '}
+                                  {calculateGreatCircleDistance(
+                                    SRI_SUMANGALA_CENTER.lat,
+                                    SRI_SUMANGALA_CENTER.lng,
+                                    selectedSchool.lat,
+                                    selectedSchool.lng
+                                  ).toFixed(0)}{' '}
+                                  m
+                                </p>
+                                <p
+                                  className={
+                                    calculateGreatCircleDistance(
+                                      residence.lat,
+                                      residence.lng,
+                                      selectedSchool.lat,
+                                      selectedSchool.lng
+                                    ) < distance
+                                      ? 'text-rose-600 font-bold'
+                                      : 'text-emerald-700 font-medium'
+                                  }
+                                >
+                                  {calculateGreatCircleDistance(
+                                    residence.lat,
+                                    residence.lng,
+                                    selectedSchool.lat,
+                                    selectedSchool.lng
+                                  ) < distance
+                                    ? '⚠️ Inside Residence Radius (Closer than SSC - Deducts marks)'
+                                    : '✓ Outside Residence Radius (Farther than SSC - No deduction)'}
+                                </p>
+                              </>
+                            ) : (
+                              <p>
+                                Distance to SSC:{' '}
+                                {calculateGreatCircleDistance(
+                                  SRI_SUMANGALA_CENTER.lat,
+                                  SRI_SUMANGALA_CENTER.lng,
+                                  selectedSchool.lat,
+                                  selectedSchool.lng
+                                ).toFixed(0)}{' '}
+                                m
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </InfoWindow>
                     )}
 
-                    {/* Applicant Residence Marker */}
+                    {/* Applicant Residence Marker (ALWAYS Circle Center) */}
                     {residence && (
                       <AdvancedMarker
                         position={residence}
-                        title="Applicant Residence"
+                        title="Applicant Residence (Circle Center)"
                         draggable={true}
                         onDragEnd={(e) => {
                           if (e.latLng) {
@@ -403,10 +455,11 @@ export default function App() {
                         }}
                       >
                         <div className="flex flex-col items-center cursor-move group">
-                          <div className="px-2 py-0.5 rounded bg-black/80 text-amber-300 text-[10px] font-bold border border-amber-300/40 shadow mb-0.5 whitespace-nowrap">
-                            Residence
+                          <div className="px-2 py-0.5 rounded bg-black/90 text-amber-300 text-[10px] font-bold border border-amber-300/50 shadow mb-0.5 whitespace-nowrap flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            Residence (Circle Center)
                           </div>
-                          <div className="w-8 h-8 rounded-full bg-emerald-500 border-2 border-white shadow-xl flex items-center justify-center text-white font-bold text-xs">
+                          <div className="w-8 h-8 rounded-full bg-emerald-500 border-2 border-white shadow-xl flex items-center justify-center text-white font-bold text-xs ring-4 ring-emerald-500/30">
                             <MapPin className="w-4 h-4" />
                           </div>
                         </div>
@@ -424,15 +477,15 @@ export default function App() {
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1.5">
                     <SSCLogo className="w-3.5 h-4 inline-block" />
-                    Sri Sumangala College
+                    Sri Sumangala College (Destination)
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white"></span>
-                    Applicant Residence
+                    Residence (Circle Center)
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-rose-600 inline-block border border-white"></span>
-                    Within Radius
+                    Closer School (Deduction)
                   </span>
                 </div>
                 {residence && (
@@ -483,35 +536,69 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Schools within area card */}
+              {/* Schools closer than SSC (within residence-centered circle) */}
               <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold text-white flex items-center gap-2 font-heading">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_#e9b949]"></span>
-                    Schools Closer Than / Within Radius
-                  </h2>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-semibold border border-amber-400/30">
+                  <div>
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2 font-heading">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]"></span>
+                      Schools Closer to Residence
+                    </h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Inside circle (Center: Residence, Radius: {distance ? `${distance.toFixed(0)}m` : 'SSC'})
+                    </p>
+                  </div>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                    nearbySchools.length === 0
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  }`}>
                     {nearbySchools.length} {nearbySchools.length === 1 ? 'school' : 'schools'}
                   </span>
                 </div>
 
-                <div className="max-h-48 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                <div className="max-h-52 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
                   {nearbySchools.length === 0 ? (
-                    <div className="text-center py-6 text-slate-400 text-xs bg-white/5 rounded-xl border border-white/5">
+                    <div className="text-center py-6 text-slate-300 text-xs bg-emerald-500/10 rounded-xl border border-emerald-500/20 px-3">
                       {residence
-                        ? '✅ No other schools found within this residence radius!'
-                        : 'Place a marker on the map to evaluate nearby schools.'}
+                        ? '✅ No closer schools found inside the residence circle! Zero deductions.'
+                        : 'Place an entering location on the map to evaluate closer schools.'}
                     </div>
                   ) : (
-                    nearbySchools.map((s, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-2.5 transition-colors"
-                      >
-                        <p className="text-xs font-semibold text-slate-100">{s.name}</p>
-                        <p className="text-[11px] text-slate-400">{s.en}</p>
-                      </div>
-                    ))
+                    nearbySchools.map((s, idx) => {
+                      const dFromRes = residence
+                        ? calculateGreatCircleDistance(
+                            residence.lat,
+                            residence.lng,
+                            s.lat,
+                            s.lng
+                          )
+                        : null;
+                      return (
+                        <div
+                          key={idx}
+                          className="bg-white/5 hover:bg-white/10 border border-rose-500/20 rounded-xl p-2.5 transition-colors flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-100 truncate">{s.name}</p>
+                            <p className="text-[11px] text-slate-400 truncate">{s.en}</p>
+                            {dFromRes !== null && (
+                              <p className="text-[10px] text-amber-300/90 font-mono mt-0.5">
+                                📍 {dFromRes.toFixed(0)} m from residence{' '}
+                                {distance !== null && (
+                                  <span className="text-rose-300">
+                                    ({(distance - dFromRes).toFixed(0)} m closer than SSC)
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-bold text-rose-400 shrink-0 font-mono bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
+                            -{categoryRule.perSchool} pts
+                          </span>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>

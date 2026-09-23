@@ -1,4 +1,7 @@
+import React from 'react';
 import { School, CategoryKey, CATEGORY_RULES } from '../data/schools';
+import { SSCLogo } from './SSCLogo';
+import { PrintMap } from './PrintMap';
 
 interface PrintReportProps {
   applicationNo: string;
@@ -12,6 +15,7 @@ interface PrintReportProps {
   maxMarks: number;
   deduction: number;
   netMarks: number;
+  isPreview?: boolean;
 }
 
 export function PrintReport({
@@ -26,121 +30,172 @@ export function PrintReport({
   maxMarks,
   deduction,
   netMarks,
+  isPreview = false,
 }: PrintReportProps) {
   const currentDate = new Date().toLocaleString('en-LK', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
 
+  const residence =
+    latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : null;
+
   return (
-    <div id="printArea" className="print-only p-8 text-black bg-white max-w-4xl mx-auto font-sans">
-      <div className="flex items-center gap-4 border-b-2 border-[#123057] pb-4 mb-6">
-        <div className="w-16 h-16 bg-[#0b1f3a] text-amber-400 rounded-lg flex items-center justify-center font-bold text-2xl border-2 border-amber-400">
-          SSC
-        </div>
-        <div>
-          <div className="text-xs uppercase tracking-wider text-gray-600 font-semibold">
+    <div
+      id={isPreview ? 'previewArea' : 'printArea'}
+      className={`${isPreview ? 'p-6 bg-white text-black max-w-4xl mx-auto rounded-xl shadow-2xl' : 'print-only p-8 text-black bg-white max-w-4xl mx-auto'} font-sans leading-relaxed`}
+    >
+      {/* College Header */}
+      <div className="flex items-center gap-5 border-b-2 border-[#12275e] pb-4 mb-5">
+        <SSCLogo className="w-16 h-20" />
+        <div className="flex-1">
+          <div className="text-[11px] uppercase tracking-wider text-emerald-800 font-bold">
             GRADE 1 · NEW KIDS REGISTRATION
           </div>
-          <h1 className="text-xl font-bold text-[#0b1f3a]">
+          <h1 className="text-xl font-bold text-[#0b1f3a] leading-tight">
             Primary Section Admission — Distance Check Report
           </h1>
-          <p className="text-sm text-gray-700">
+          <p className="text-sm font-semibold text-slate-800">
             Sri Sumangala College, Panadura (ශ්‍රී සුමංගල විද්‍යාලය, පාණදුර)
+          </p>
+          <p className="text-xs text-slate-600 mt-0.5">
+            Ministry of Education Circular Compliant · Straight-Line Great-Circle Geodetic Measurement
           </p>
         </div>
       </div>
 
-      <table className="w-full border-collapse text-sm mb-6">
+      {/* Applicant Identification Box */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 border border-slate-300 rounded-lg p-3 text-xs mb-4">
+        <div>
+          <span className="block text-slate-500 font-semibold uppercase text-[10px]">Application No:</span>
+          <span className="font-bold text-slate-900 text-sm">{applicationNo || '—'}</span>
+        </div>
+        <div>
+          <span className="block text-slate-500 font-semibold uppercase text-[10px]">Child's Name:</span>
+          <span className="font-semibold text-slate-900 truncate block">{childName || '—'}</span>
+        </div>
+        <div>
+          <span className="block text-slate-500 font-semibold uppercase text-[10px]">Parent / Guardian NIC:</span>
+          <span className="font-semibold text-slate-900">{parentNic || '—'}</span>
+        </div>
+        <div>
+          <span className="block text-slate-500 font-semibold uppercase text-[10px]">Category:</span>
+          <span className="font-bold text-emerald-800">{category}</span>
+        </div>
+      </div>
+
+      {/* MAP AREA (User explicitly requested map area in print) */}
+      <div className="mb-5 break-inside-avoid">
+        <div className="flex items-center justify-between mb-1.5 px-0.5">
+          <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>
+            Cadastral Distance Verification Map Area
+          </h2>
+          <span className="text-[11px] text-slate-500 font-medium">
+            Straight-line direct vector from SSC Gate
+          </span>
+        </div>
+        
+        {/* Render High-Fidelity Vector Print Map */}
+        <PrintMap
+          residence={residence}
+          distance={distance}
+          nearbySchools={nearbySchools}
+        />
+      </div>
+
+      {/* Measurement and Marks Calculation Table */}
+      <table className="w-full border-collapse text-xs mb-5 border border-slate-300">
         <tbody>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700 w-2/5">Application Number</td>
-            <td className="py-2.5 text-gray-900 font-medium">{applicationNo || '—'}</td>
+          <tr className="border-b border-slate-200 bg-slate-50">
+            <td className="py-2 px-3 font-semibold text-slate-700 w-2/5">Sri Sumangala College Gate Coordinates</td>
+            <td className="py-2 px-3 text-slate-900 font-mono">6.710070° N, 79.914400° E (Main Entrance Gate)</td>
           </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700">Child's Full Name</td>
-            <td className="py-2.5 text-gray-900">{childName || '—'}</td>
-          </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700">Parent / Guardian NIC</td>
-            <td className="py-2.5 text-gray-900">{parentNic || '—'}</td>
-          </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700">Admission Category</td>
-            <td className="py-2.5 text-gray-900">
-              {category} ({CATEGORY_RULES[category].labelSinhala})
+          <tr className="border-b border-slate-200">
+            <td className="py-2 px-3 font-semibold text-slate-700">Applicant Residence GPS Coordinates</td>
+            <td className="py-2 px-3 text-slate-900 font-mono font-medium">
+              {latitude !== null && longitude !== null
+                ? `${latitude.toFixed(6)}° N, ${longitude.toFixed(6)}° E`
+                : 'Not Set'}
             </td>
           </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700">Residence to School Distance</td>
-            <td className="py-2.5 text-gray-900 font-bold">
+          <tr className="border-b border-slate-200 bg-emerald-50/50">
+            <td className="py-2 px-3 font-bold text-slate-800">Straight-Line Geodesic Distance</td>
+            <td className="py-2 px-3 text-emerald-800 font-bold text-sm font-mono">
               {distance !== null
                 ? `${distance.toFixed(1)} metres (${(distance / 1000).toFixed(3)} km)`
                 : '—'}
             </td>
           </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700">Residence GPS Coordinates</td>
-            <td className="py-2.5 text-gray-900">
-              {latitude !== null && longitude !== null
-                ? `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`
-                : '—'}
+          <tr className="border-b border-slate-200">
+            <td className="py-2 px-3 font-semibold text-slate-700 align-top">
+              Schools Within Residence Radius ({nearbySchools.length})
             </td>
-          </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700 align-top">
-              Schools Within Radius ({nearbySchools.length})
-            </td>
-            <td className="py-2.5 text-gray-900">
+            <td className="py-2 px-3 text-slate-900">
               {nearbySchools.length === 0 ? (
-                <span className="text-gray-500 italic">None within this radius</span>
+                <span className="text-emerald-700 font-medium">None within this radius (0 deductions)</span>
               ) : (
-                <ol className="list-decimal pl-4 space-y-1">
+                <div className="flex flex-wrap gap-1.5 py-1">
                   {nearbySchools.map((school, idx) => (
-                    <li key={idx}>
-                      <span className="font-medium">{school.en}</span> ({school.name})
-                    </li>
+                    <span
+                      key={idx}
+                      className="inline-block bg-orange-50 border border-orange-200 text-orange-900 px-2 py-0.5 rounded text-[11px]"
+                    >
+                      {idx + 1}. {school.en}
+                    </span>
                   ))}
-                </ol>
+                </div>
               )}
             </td>
           </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700">Category Maximum Marks</td>
-            <td className="py-2.5 text-gray-900 font-semibold">{maxMarks}</td>
-          </tr>
-          <tr className="border-b border-gray-200">
-            <td className="py-2.5 font-semibold text-gray-700">Deduction</td>
-            <td className="py-2.5 text-red-600 font-semibold">
-              - {deduction} ({nearbySchools.length} schools × {CATEGORY_RULES[category].perSchool} marks)
+          <tr className="border-b border-slate-200">
+            <td className="py-2 px-3 font-semibold text-slate-700">Admission Category Allocated Marks</td>
+            <td className="py-2 px-3 text-slate-900 font-medium">
+              {category} · Maximum: <strong className="font-bold">{maxMarks} Marks</strong>
             </td>
           </tr>
-          <tr className="border-b-2 border-gray-800 bg-gray-50">
-            <td className="py-3 font-bold text-gray-900 text-base">Net Score Obtained</td>
-            <td className="py-3 text-green-700 font-bold text-xl">{netMarks} / {maxMarks}</td>
+          <tr className="border-b border-slate-200">
+            <td className="py-2 px-3 font-semibold text-slate-700">Deduction (Intermediate Schools)</td>
+            <td className="py-2 px-3 text-red-600 font-semibold font-mono">
+              - {deduction} Marks ({nearbySchools.length} schools × {CATEGORY_RULES[category].perSchool} marks deduction)
+            </td>
+          </tr>
+          <tr className="border-b-2 border-slate-900 bg-slate-100">
+            <td className="py-2.5 px-3 font-bold text-slate-900 text-sm">Final Net Distance Marks Obtained</td>
+            <td className="py-2.5 px-3 text-emerald-800 font-bold text-lg font-mono">
+              {netMarks} / {maxMarks} Marks
+            </td>
           </tr>
           <tr>
-            <td className="py-2.5 font-semibold text-gray-700">Report Generated On</td>
-            <td className="py-2.5 text-gray-600 text-xs">{currentDate}</td>
+            <td className="py-1.5 px-3 font-medium text-slate-500 text-[11px]">System Timestamp</td>
+            <td className="py-1.5 px-3 text-slate-600 text-[11px] font-mono">{currentDate}</td>
           </tr>
         </tbody>
       </table>
 
-      <div className="mt-12 pt-6 border-t border-gray-300 grid grid-cols-2 gap-8 text-sm">
+      {/* Official Signatures & Seal Verification */}
+      <div className="mt-8 pt-4 border-t border-slate-400 grid grid-cols-2 gap-8 text-xs break-inside-avoid">
         <div>
-          <p className="text-gray-700 font-medium mb-12">Parent / Guardian Signature:</p>
-          <div className="border-b border-gray-400 w-3/4"></div>
-          <p className="text-xs text-gray-500 mt-1">Date: ________________________</p>
+          <p className="text-slate-800 font-semibold mb-10">Parent / Guardian Signature:</p>
+          <div className="border-b border-slate-400 w-4/5 mb-1"></div>
+          <p className="text-[11px] text-slate-500">Name: ___________________________________</p>
+          <p className="text-[11px] text-slate-500 mt-1">Date: ___________________________________</p>
         </div>
         <div>
-          <p className="text-gray-700 font-medium mb-12">Officer in Charge Verification:</p>
-          <div className="border-b border-gray-400 w-3/4"></div>
-          <p className="text-xs text-gray-500 mt-1">Signature & Official Seal</p>
+          <p className="text-slate-800 font-semibold mb-10">Officer in Charge Verification:</p>
+          <div className="border-b border-slate-400 w-4/5 mb-1"></div>
+          <p className="text-[11px] text-slate-500">Signature & Official School Seal</p>
+          <p className="text-[11px] text-slate-500 mt-1">Date: ___________________________________</p>
         </div>
       </div>
 
-      <div className="mt-8 text-center text-xs text-gray-500">
-        Principal — W. T. Raweendra Pushpakumara · Sri Sumangala College, Panadura · © All rights reserved.
+      {/* Official Footer with SSCICTS branding */}
+      <div className="mt-6 pt-3 border-t border-slate-200 text-center text-[10px] text-slate-500 leading-tight">
+        <div>Principal — W. T. Raweendra Pushpakumara · Sri Sumangala College, Panadura · © All rights reserved.</div>
+        <div className="mt-1 font-semibold text-slate-700 flex items-center justify-center gap-1.5">
+          <SSCLogo className="w-3.5 h-4 inline-block" />
+          <span>Developed By <strong className="text-emerald-800 font-bold">SSCICTS</strong> (Sri Sumangala College ICT Society)</span>
+        </div>
       </div>
     </div>
   );

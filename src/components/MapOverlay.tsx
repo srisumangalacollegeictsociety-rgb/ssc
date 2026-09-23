@@ -27,7 +27,7 @@ export function MapOverlay({ residenceLocation, radius }: MapOverlayProps) {
 
     if (!residenceLocation || radius === null) return;
 
-    // Draw Polyline
+    // Draw Polyline between Sri Sumangala College and Residence
     polylineRef.current = new google.maps.Polyline({
       map,
       path: [
@@ -35,20 +35,20 @@ export function MapOverlay({ residenceLocation, radius }: MapOverlayProps) {
         residenceLocation,
       ],
       strokeColor: '#e9b949',
-      strokeOpacity: 0.9,
+      strokeOpacity: 0.95,
       strokeWeight: 3,
     });
 
-    // Draw Circle
+    // Draw Circle centered at Sri Sumangala College with radius
     circleRef.current = new google.maps.Circle({
       map,
       center: { lat: SRI_SUMANGALA_CENTER.lat, lng: SRI_SUMANGALA_CENTER.lng },
       radius,
       strokeColor: '#f3cf7a',
-      strokeOpacity: 0.85,
+      strokeOpacity: 0.9,
       strokeWeight: 2,
       fillColor: '#e9b949',
-      fillOpacity: 0.08,
+      fillOpacity: 0.09,
     });
 
     return () => {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   APIProvider,
   Map,
@@ -13,34 +13,70 @@ import {
   CategoryKey,
   CATEGORY_RULES,
   calculateGreatCircleDistance,
+  getPermanentAddressRoadMarks,
+  getWorkplaceRoadMarks,
 } from './data/schools';
 import { MapOverlay } from './components/MapOverlay';
 import { PrintReport } from './components/PrintReport';
 import { SSCLogo } from './components/SSCLogo';
+import { fetchRoadRoute } from './utils/roadDistance';
 import {
   School as SchoolIcon,
   MapPin,
   Crosshair,
   RotateCcw,
   Printer,
-  Compass,
   Award,
   Layers,
   CheckCircle2,
   Eye,
   X,
+  Briefcase,
+  Building2,
+  Route,
+  Navigation,
+  Info,
 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY =
   import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyB2fS_e5lTyS3RfbD088y0lHJMRTs6BHKk';
 
+const WORKPLACE_PRESETS = [
+  { name: 'Kalutara Zonal Education Office', lat: 6.5854, lng: 79.9607, tier: '< 20 KM (5 pts)' },
+  { name: 'Horana Zonal Education Office', lat: 6.7161, lng: 80.0632, tier: '20-40 KM (10 pts)' },
+  { name: 'MoE Isurupaya, Battaramulla', lat: 6.8998, lng: 79.9234, tier: '20-40 KM (10 pts)' },
+  { name: 'Avissawella Zonal Office', lat: 6.9535, lng: 80.2098, tier: '40-70 KM (15 pts)' },
+  { name: 'Galle Zonal Education Office', lat: 6.0535, lng: 80.2210, tier: '70-100 KM (20 pts)' },
+  { name: 'Kandy Provincial Dept of Education', lat: 7.2906, lng: 80.6337, tier: '> 100 KM (25 pts)' },
+];
+
 export default function App() {
   const [mode, setMode] = useState<'click' | 'coords'>('click');
   const [mapTypeId, setMapTypeId] = useState<string>('hybrid');
+  const [category, setCategory] = useState<CategoryKey>('Closest Residence');
+
+  // Locations State
   const [residence, setResidence] = useState<{ lat: number; lng: number } | null>(null);
   const [inputLat, setInputLat] = useState<string>('');
   const [inputLng, setInputLng] = useState<string>('');
-  const [category, setCategory] = useState<CategoryKey>('Closest Residence');
+
+  // Education Category Specific Locations State
+  const [activeTarget, setActiveTarget] = useState<'residence' | 'workplace'>('residence');
+  const [workplace, setWorkplace] = useState<{ lat: number; lng: number } | null>(null);
+  const [workplaceName, setWorkplaceName] = useState<string>('Ministry of Education / Office / School');
+  const [inputWorkLat, setInputWorkLat] = useState<string>('');
+  const [inputWorkLng, setInputWorkLng] = useState<string>('');
+
+  // Road Routing Data for Education Category
+  const [residenceRoadKm, setResidenceRoadKm] = useState<number | null>(null);
+  const [residenceRoadPath, setResidenceRoadPath] = useState<{ lat: number; lng: number }[]>([]);
+  const [residenceRoadDuration, setResidenceRoadDuration] = useState<string>('');
+  const [loadingResRoad, setLoadingResRoad] = useState<boolean>(false);
+
+  const [workplaceRoadKm, setWorkplaceRoadKm] = useState<number | null>(null);
+  const [workplaceRoadPath, setWorkplaceRoadPath] = useState<{ lat: number; lng: number }[]>([]);
+  const [workplaceRoadDuration, setWorkplaceRoadDuration] = useState<string>('');
+  const [loadingWorkRoad, setLoadingWorkRoad] = useState<boolean>(false);
 
   // Form Details
   const [applicationNo, setApplicationNo] = useState<string>('');
@@ -54,7 +90,9 @@ export default function App() {
   const [locatingUser, setLocatingUser] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Compute straight line distance from Sri Sumangala College to applicant residence
+  const isEducationCategory = category === 'Education';
+
+  // Compute straight line (air) distance from Sri Sumangala College to applicant residence
   const distance = useMemo(() => {
     if (!residence) return null;
     return calculateGreatCircleDistance(
@@ -65,9 +103,9 @@ export default function App() {
     );
   }, [residence]);
 
-  // Find schools closer to applicant residence than Sri Sumangala College (inside residence-centered circle)
+  // Find schools closer to applicant residence than Sri Sumangala College (for circular deduction categories)
   const nearbySchools = useMemo(() => {
-    if (!residence || distance === null) return [];
+    if (isEducationCategory || !residence || distance === null) return [];
     return SCHOOL_DATA.filter((s) => {
       const dFromResidence = calculateGreatCircleDistance(
         residence.lat,
@@ -75,40 +113,106 @@ export default function App() {
         s.lat,
         s.lng
       );
-      // A school is closer if its distance to residence is less than distance to SSC
       return dFromResidence < distance;
     });
-  }, [residence, distance]);
+  }, [residence, distance, isEducationCategory]);
+
+  // Automatic Road Route Calculation for Education Category
+  useEffect(() => {
+    if (!isEducationCategory) return;
+
+    if (residence) {
+      setLoadingResRoad(true);
+      fetchRoadRoute(residence, { lat: SRI_SUMANGALA_CENTER.lat, lng: SRI_SUMANGALA_CENTER.lng })
+        .then((res) => {
+          setResidenceRoadKm(res.distanceKm);
+          setResidenceRoadPath(res.path);
+          setResidenceRoadDuration(res.durationText || '');
+        })
+        .finally(() => setLoadingResRoad(false));
+    } else {
+      setResidenceRoadKm(null);
+      setResidenceRoadPath([]);
+      setResidenceRoadDuration('');
+    }
+  }, [isEducationCategory, residence]);
+
+  useEffect(() => {
+    if (!isEducationCategory) return;
+
+    if (workplace) {
+      setLoadingWorkRoad(true);
+      fetchRoadRoute(workplace, { lat: SRI_SUMANGALA_CENTER.lat, lng: SRI_SUMANGALA_CENTER.lng })
+        .then((res) => {
+          setWorkplaceRoadKm(res.distanceKm);
+          setWorkplaceRoadPath(res.path);
+          setWorkplaceRoadDuration(res.durationText || '');
+        })
+        .finally(() => setLoadingWorkRoad(false));
+    } else {
+      setWorkplaceRoadKm(null);
+      setWorkplaceRoadPath([]);
+      setWorkplaceRoadDuration('');
+    }
+  }, [isEducationCategory, workplace]);
 
   // Marks Calculation
   const categoryRule = CATEGORY_RULES[category];
+
+  // Education category road marks
+  const residenceRoadMarks = useMemo(() => {
+    return getPermanentAddressRoadMarks(residenceRoadKm);
+  }, [residenceRoadKm]);
+
+  const workplaceRoadMarks = useMemo(() => {
+    return getWorkplaceRoadMarks(workplaceRoadKm);
+  }, [workplaceRoadKm]);
+
   const maxMarks = categoryRule.max;
-  const deduction = nearbySchools.length * categoryRule.perSchool;
-  const netMarks = Math.max(0, maxMarks - deduction);
+  const deduction = isEducationCategory ? 0 : nearbySchools.length * categoryRule.perSchool;
+  const netMarks = isEducationCategory
+    ? (residence ? residenceRoadMarks.marks : 0) + (workplace ? workplaceRoadMarks.marks : 0)
+    : Math.max(0, maxMarks - deduction);
 
   const handleMapClick = useCallback(
     (e: MapMouseEvent) => {
       if (mode !== 'click') return;
       if (e.detail.latLng) {
         const newPos = { lat: e.detail.latLng.lat, lng: e.detail.latLng.lng };
-        setResidence(newPos);
-        setInputLat(newPos.lat.toFixed(6));
-        setInputLng(newPos.lng.toFixed(6));
+
+        if (isEducationCategory && activeTarget === 'workplace') {
+          setWorkplace(newPos);
+          setInputWorkLat(newPos.lat.toFixed(6));
+          setInputWorkLng(newPos.lng.toFixed(6));
+        } else {
+          setResidence(newPos);
+          setInputLat(newPos.lat.toFixed(6));
+          setInputLng(newPos.lng.toFixed(6));
+        }
         setErrorMsg(null);
       }
     },
-    [mode]
+    [mode, isEducationCategory, activeTarget]
   );
 
   const handleCheckCoordinates = () => {
-    const lat = parseFloat(inputLat);
-    const lng = parseFloat(inputLng);
+    const isTargetWorkplace = isEducationCategory && activeTarget === 'workplace';
+    const latStr = isTargetWorkplace ? inputWorkLat : inputLat;
+    const lngStr = isTargetWorkplace ? inputWorkLng : inputLng;
+
+    const lat = parseFloat(latStr);
+    const lng = parseFloat(lngStr);
     if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
       setErrorMsg('Please enter valid numeric latitude (-90 to 90) and longitude (-180 to 180).');
       return;
     }
     setErrorMsg(null);
-    setResidence({ lat, lng });
+
+    if (isTargetWorkplace) {
+      setWorkplace({ lat, lng });
+    } else {
+      setResidence({ lat, lng });
+    }
   };
 
   const handleUseMyLocation = () => {
@@ -122,9 +226,15 @@ export default function App() {
       (pos) => {
         setLocatingUser(false);
         const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setResidence(newPos);
-        setInputLat(newPos.lat.toFixed(6));
-        setInputLng(newPos.lng.toFixed(6));
+        if (isEducationCategory && activeTarget === 'workplace') {
+          setWorkplace(newPos);
+          setInputWorkLat(newPos.lat.toFixed(6));
+          setInputWorkLng(newPos.lng.toFixed(6));
+        } else {
+          setResidence(newPos);
+          setInputLat(newPos.lat.toFixed(6));
+          setInputLng(newPos.lng.toFixed(6));
+        }
       },
       (err) => {
         setLocatingUser(false);
@@ -134,10 +244,26 @@ export default function App() {
     );
   };
 
+  const handleSelectWorkplacePreset = (preset: typeof WORKPLACE_PRESETS[0]) => {
+    setWorkplace({ lat: preset.lat, lng: preset.lng });
+    setWorkplaceName(preset.name);
+    setInputWorkLat(preset.lat.toFixed(6));
+    setInputWorkLng(preset.lng.toFixed(6));
+    setErrorMsg(null);
+  };
+
   const handleReset = () => {
     setResidence(null);
     setInputLat('');
     setInputLng('');
+    setWorkplace(null);
+    setInputWorkLat('');
+    setInputWorkLng('');
+    setWorkplaceName('Ministry of Education / Office / School');
+    setResidenceRoadKm(null);
+    setResidenceRoadPath([]);
+    setWorkplaceRoadKm(null);
+    setWorkplaceRoadPath([]);
     setSelectedSchool(null);
     setShowCollegeInfo(false);
     setErrorMsg(null);
@@ -226,14 +352,97 @@ export default function App() {
                 </div>
               </div>
 
+              {/* EDUCATION CATEGORY TARGET SWITCHER (Permanent Residence vs Workplace) */}
+              {isEducationCategory && (
+                <div className="mb-3 p-2.5 rounded-xl bg-gradient-to-r from-blue-950/70 via-indigo-950/60 to-amber-950/50 border border-blue-400/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-sky-200 flex items-center gap-1.5">
+                      <Route className="w-3.5 h-3.5 text-sky-400" />
+                      Education Category: Active Placement Pin
+                    </span>
+                    <span className="text-[10px] bg-blue-500/20 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full font-medium">
+                      Road Distance Only (No Air Distance)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTarget('residence')}
+                      className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-between gap-1.5 border transition-all cursor-pointer ${
+                        activeTarget === 'residence'
+                          ? 'bg-sky-600 text-white border-sky-300 shadow-md ring-2 ring-sky-400/40'
+                          : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 truncate">
+                        <MapPin className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                        1. Permanent Address
+                      </span>
+                      <span className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded bg-black/30">
+                        {residence ? `${(residenceRoadKm ?? 0).toFixed(1)} km` : 'Not set'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTarget('workplace')}
+                      className={`p-2 rounded-lg text-xs font-semibold flex items-center justify-between gap-1.5 border transition-all cursor-pointer ${
+                        activeTarget === 'workplace'
+                          ? 'bg-amber-600 text-white border-amber-300 shadow-md ring-2 ring-amber-400/40'
+                          : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Briefcase className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        2. Workplace
+                      </span>
+                      <span className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded bg-black/30">
+                        {workplace ? `${(workplaceRoadKm ?? 0).toFixed(1)} km` : 'Not set'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Workplace Quick Presets Bar */}
+                  {activeTarget === 'workplace' && (
+                    <div className="mt-2.5 pt-2 border-t border-white/10">
+                      <div className="flex items-center justify-between text-[11px] text-amber-200/90 mb-1.5">
+                        <span className="font-semibold flex items-center gap-1">
+                          <Building2 className="w-3 h-3 text-amber-400" />
+                          Quick Workplace Presets across distance tiers:
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {WORKPLACE_PRESETS.map((preset, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleSelectWorkplacePreset(preset)}
+                            className="text-[10px] bg-black/40 hover:bg-amber-500/20 text-slate-200 hover:text-amber-200 border border-white/10 hover:border-amber-400/40 px-2 py-1 rounded transition-colors cursor-pointer flex items-center gap-1"
+                            title={`${preset.name} (${preset.tier})`}
+                          >
+                            <span>{preset.name.split(' ')[0]}</span>
+                            <span className="text-amber-400 font-mono text-[9px]">({preset.tier})</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="text-xs text-slate-400 mb-2.5 flex items-center justify-between">
                 <span>
                   {mode === 'click'
-                    ? '🎯 Click anywhere on the map or drag the applicant marker to measure distance.'
-                    : '⌨️ Type residence latitude and longitude, then click "Check distance".'}
+                    ? isEducationCategory
+                      ? activeTarget === 'workplace'
+                        ? '🏢 Click on the map to set Workplace location.'
+                        : '🏠 Click on the map to set Permanent Address location.'
+                      : '🎯 Click anywhere on the map or drag the applicant marker to measure distance.'
+                    : '⌨️ Type coordinates, then click "Check distance".'}
                 </span>
                 <span className="text-amber-400/90 font-medium hidden sm:inline">
-                  35 Area Schools Mapped
+                  {isEducationCategory ? 'Driving Road Network Active' : '35 Area Schools Mapped'}
                 </span>
               </div>
 
@@ -242,24 +451,36 @@ export default function App() {
                 <div className="mb-3.5 p-3 rounded-xl bg-black/30 border border-white/10 flex flex-wrap items-end gap-3 animate-fadeIn">
                   <div className="flex-1 min-w-[130px]">
                     <label className="block text-[11px] text-slate-400 mb-1 font-medium">
-                      Latitude
+                      {isEducationCategory && activeTarget === 'workplace'
+                        ? 'Workplace Latitude'
+                        : 'Permanent Residence Latitude'}
                     </label>
                     <input
                       type="text"
-                      value={inputLat}
-                      onChange={(e) => setInputLat(e.target.value)}
+                      value={isEducationCategory && activeTarget === 'workplace' ? inputWorkLat : inputLat}
+                      onChange={(e) =>
+                        isEducationCategory && activeTarget === 'workplace'
+                          ? setInputWorkLat(e.target.value)
+                          : setInputLat(e.target.value)
+                      }
                       placeholder="e.g. 6.70860"
                       className="w-full bg-white/10 border border-white/15 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                     />
                   </div>
                   <div className="flex-1 min-w-[130px]">
                     <label className="block text-[11px] text-slate-400 mb-1 font-medium">
-                      Longitude
+                      {isEducationCategory && activeTarget === 'workplace'
+                        ? 'Workplace Longitude'
+                        : 'Permanent Residence Longitude'}
                     </label>
                     <input
                       type="text"
-                      value={inputLng}
-                      onChange={(e) => setInputLng(e.target.value)}
+                      value={isEducationCategory && activeTarget === 'workplace' ? inputWorkLng : inputLng}
+                      onChange={(e) =>
+                        isEducationCategory && activeTarget === 'workplace'
+                          ? setInputWorkLng(e.target.value)
+                          : setInputLng(e.target.value)
+                      }
                       placeholder="e.g. 79.91470"
                       className="w-full bg-white/10 border border-white/15 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                     />
@@ -290,9 +511,9 @@ export default function App() {
                 </div>
               )}
 
-              {/* Google Map Container with explicit CSS height */}
+              {/* Google Map Container */}
               <div className="w-full h-[540px] md:h-[600px] rounded-xl overflow-hidden border border-white/15 relative bg-[#0a1626]">
-                <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={[]}>
+                <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['routes']}>
                   <Map
                     defaultCenter={{ lat: SRI_SUMANGALA_CENTER.lat, lng: SRI_SUMANGALA_CENTER.lng }}
                     defaultZoom={15}
@@ -328,48 +549,49 @@ export default function App() {
                           </h4>
                           <p className="text-xs text-slate-600 mt-0.5">{SRI_SUMANGALA_CENTER.name}</p>
                           <p className="text-[11px] text-amber-700 font-semibold mt-1">
-                            Reference College Gate (Measurement Origin)
+                            Principal's Office (Measurement Destination)
                           </p>
                         </div>
                       </InfoWindow>
                     )}
 
-                    {/* Surrounding Schools Markers */}
-                    {SCHOOL_DATA.map((school, i) => {
-                      const distFromRes = residence
-                        ? calculateGreatCircleDistance(
-                            residence.lat,
-                            residence.lng,
-                            school.lat,
-                            school.lng
-                          )
-                        : null;
-                      const isCloser =
-                        distFromRes !== null &&
-                        distance !== null &&
-                        distFromRes < distance;
+                    {/* Surrounding Schools Markers (shown only for circular deduction categories) */}
+                    {!isEducationCategory &&
+                      SCHOOL_DATA.map((school, i) => {
+                        const distFromRes = residence
+                          ? calculateGreatCircleDistance(
+                              residence.lat,
+                              residence.lng,
+                              school.lat,
+                              school.lng
+                            )
+                          : null;
+                        const isCloser =
+                          distFromRes !== null &&
+                          distance !== null &&
+                          distFromRes < distance;
 
-                      return (
-                        <AdvancedMarker
-                          key={i}
-                          position={{ lat: school.lat, lng: school.lng }}
-                          onClick={() => setSelectedSchool(school)}
-                          title={`${school.en} (${school.name})`}
-                        >
-                          <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center border text-xs shadow-md transition-transform hover:scale-110 cursor-pointer ${
-                              isCloser
-                                ? 'bg-rose-600 text-white border-white ring-2 ring-rose-400'
-                                : 'bg-[#123057] text-amber-300 border-amber-300/60'
-                            }`}
+                        return (
+                          <AdvancedMarker
+                            key={i}
+                            position={{ lat: school.lat, lng: school.lng }}
+                            onClick={() => setSelectedSchool(school)}
+                            title={`${school.en} (${school.name})`}
                           >
-                            <SchoolIcon className="w-3.5 h-3.5" />
-                          </div>
-                        </AdvancedMarker>
-                      );
-                    })}
+                            <div
+                              className={`w-7 h-7 rounded-full flex items-center justify-center border text-xs shadow-md transition-transform hover:scale-110 cursor-pointer ${
+                                isCloser
+                                  ? 'bg-rose-600 text-white border-white ring-2 ring-rose-400'
+                                  : 'bg-[#123057] text-amber-300 border-amber-300/60'
+                              }`}
+                            >
+                              <SchoolIcon className="w-3.5 h-3.5" />
+                            </div>
+                          </AdvancedMarker>
+                        );
+                      })}
 
-                    {selectedSchool && (
+                    {selectedSchool && !isEducationCategory && (
                       <InfoWindow
                         position={{ lat: selectedSchool.lat, lng: selectedSchool.lng }}
                         onCloseClick={() => setSelectedSchool(null)}
@@ -439,11 +661,15 @@ export default function App() {
                       </InfoWindow>
                     )}
 
-                    {/* Applicant Residence Marker (ALWAYS Circle Center) */}
+                    {/* Applicant Residence Marker */}
                     {residence && (
                       <AdvancedMarker
                         position={residence}
-                        title="Applicant Residence (Circle Center)"
+                        title={
+                          isEducationCategory
+                            ? `Permanent Residence · Road: ${(residenceRoadKm ?? 0).toFixed(2)} km`
+                            : 'Applicant Residence (Circle Center)'
+                        }
                         draggable={true}
                         onDragEnd={(e) => {
                           if (e.latLng) {
@@ -455,46 +681,119 @@ export default function App() {
                         }}
                       >
                         <div className="flex flex-col items-center cursor-move group">
-                          <div className="px-2 py-0.5 rounded bg-black/90 text-amber-300 text-[10px] font-bold border border-amber-300/50 shadow mb-0.5 whitespace-nowrap flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                            Residence (Circle Center)
+                          <div
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold shadow mb-0.5 whitespace-nowrap flex items-center gap-1 border ${
+                              isEducationCategory
+                                ? 'bg-sky-950 text-sky-200 border-sky-400'
+                                : 'bg-black/90 text-amber-300 border-amber-300/50'
+                            }`}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                            {isEducationCategory
+                              ? `Residence: ${residenceRoadKm !== null ? `${residenceRoadKm.toFixed(2)} km` : 'measuring…'}`
+                              : 'Residence (Circle Center)'}
                           </div>
-                          <div className="w-8 h-8 rounded-full bg-emerald-500 border-2 border-white shadow-xl flex items-center justify-center text-white font-bold text-xs ring-4 ring-emerald-500/30">
+                          <div
+                            className={`w-8 h-8 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-white font-bold text-xs ring-4 ${
+                              isEducationCategory
+                                ? 'bg-sky-500 ring-sky-500/30'
+                                : 'bg-emerald-500 ring-emerald-500/30'
+                            }`}
+                          >
                             <MapPin className="w-4 h-4" />
                           </div>
                         </div>
                       </AdvancedMarker>
                     )}
 
-                    {/* Polyline & Distance Boundary Circle */}
-                    <MapOverlay residenceLocation={residence} radius={distance} />
+                    {/* Workplace Marker (Education Category) */}
+                    {isEducationCategory && workplace && (
+                      <AdvancedMarker
+                        position={workplace}
+                        title={`Workplace: ${workplaceName} · Road: ${(workplaceRoadKm ?? 0).toFixed(2)} km`}
+                        draggable={true}
+                        onDragEnd={(e) => {
+                          if (e.latLng) {
+                            const newPos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                            setWorkplace(newPos);
+                            setInputWorkLat(newPos.lat.toFixed(6));
+                            setInputWorkLng(newPos.lng.toFixed(6));
+                          }
+                        }}
+                      >
+                        <div className="flex flex-col items-center cursor-move group">
+                          <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-200 border border-amber-400 shadow mb-0.5 whitespace-nowrap flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            Workplace: {workplaceRoadKm !== null ? `${workplaceRoadKm.toFixed(2)} km` : 'measuring…'}
+                          </div>
+                          <div className="w-8 h-8 rounded-full bg-amber-500 border-2 border-white shadow-xl flex items-center justify-center text-white font-bold text-xs ring-4 ring-amber-500/30">
+                            <Briefcase className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </AdvancedMarker>
+                    )}
+
+                    {/* Polyline / Road Route / Circle Overlay */}
+                    <MapOverlay
+                      residenceLocation={residence}
+                      radius={distance}
+                      isEducationCategory={isEducationCategory}
+                      residenceRoadPath={residenceRoadPath}
+                      workplaceRoadPath={workplaceRoadPath}
+                      workplaceLocation={workplace}
+                    />
                   </Map>
                 </APIProvider>
+
+                {/* Road Routing Loading Indicator */}
+                {isEducationCategory && (loadingResRoad || loadingWorkRoad) && (
+                  <div className="absolute top-3 left-3 z-10 bg-slate-900/90 border border-sky-400/40 text-sky-200 text-xs px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg backdrop-blur">
+                    <Navigation className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                    <span>Calculating shortest road route…</span>
+                  </div>
+                )}
               </div>
 
               {/* Quick Actions Footer below map */}
               <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 mt-3 px-1 gap-2">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className="flex items-center gap-1.5">
                     <SSCLogo className="w-3.5 h-4 inline-block" />
                     Sri Sumangala College (Destination)
                   </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white"></span>
-                    Residence (Circle Center)
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full bg-rose-600 inline-block border border-white"></span>
-                    Closer School (Deduction)
-                  </span>
+
+                  {isEducationCategory ? (
+                    <>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-sky-500 inline-block border border-white"></span>
+                        Permanent Address (Road Route)
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-amber-500 inline-block border border-white"></span>
+                        Workplace (Road Route)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white"></span>
+                        Residence (Circle Center)
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-3 h-3 rounded-full bg-rose-600 inline-block border border-white"></span>
+                        Closer School (Deduction)
+                      </span>
+                    </>
+                  )}
                 </div>
-                {residence && (
+
+                {(residence || workplace) && (
                   <button
                     onClick={handleReset}
                     className="text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    Clear marker
+                    Clear all pins
                   </button>
                 )}
               </div>
@@ -502,108 +801,7 @@ export default function App() {
 
             {/* Sidebar Column (5 cols on lg) */}
             <aside className="lg:col-span-5 flex flex-col gap-5">
-              {/* Location details card */}
-              <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2 mb-3.5 font-heading">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_#e9b949]"></span>
-                  Location & Distance Measurements
-                </h2>
-                <div className="divide-y divide-white/8 text-sm">
-                  <div className="py-2.5 flex justify-between items-baseline">
-                    <span className="text-slate-300">Distance to school</span>
-                    <span className="font-bold text-white font-mono text-base">
-                      {distance !== null ? `${distance.toFixed(1)} m` : '—'}
-                    </span>
-                  </div>
-                  <div className="py-2 flex justify-between items-baseline">
-                    <span className="text-slate-400 text-xs">Distance in Kilometers</span>
-                    <span className="font-semibold text-slate-200 font-mono text-xs">
-                      {distance !== null ? `${(distance / 1000).toFixed(3)} km` : '—'}
-                    </span>
-                  </div>
-                  <div className="py-2 flex justify-between items-baseline">
-                    <span className="text-slate-300">Latitude</span>
-                    <span className="font-mono text-slate-200 text-xs">
-                      {residence ? residence.lat.toFixed(6) : '—'}
-                    </span>
-                  </div>
-                  <div className="py-2 flex justify-between items-baseline">
-                    <span className="text-slate-300">Longitude</span>
-                    <span className="font-mono text-slate-200 text-xs">
-                      {residence ? residence.lng.toFixed(6) : '—'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Schools closer than SSC (within residence-centered circle) */}
-              <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h2 className="text-sm font-bold text-white flex items-center gap-2 font-heading">
-                      <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]"></span>
-                      Schools Closer to Residence
-                    </h2>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Inside circle (Center: Residence, Radius: {distance ? `${distance.toFixed(0)}m` : 'SSC'})
-                    </p>
-                  </div>
-                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
-                    nearbySchools.length === 0
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                      : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                  }`}>
-                    {nearbySchools.length} {nearbySchools.length === 1 ? 'school' : 'schools'}
-                  </span>
-                </div>
-
-                <div className="max-h-52 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-                  {nearbySchools.length === 0 ? (
-                    <div className="text-center py-6 text-slate-300 text-xs bg-emerald-500/10 rounded-xl border border-emerald-500/20 px-3">
-                      {residence
-                        ? '✅ No closer schools found inside the residence circle! Zero deductions.'
-                        : 'Place an entering location on the map to evaluate closer schools.'}
-                    </div>
-                  ) : (
-                    nearbySchools.map((s, idx) => {
-                      const dFromRes = residence
-                        ? calculateGreatCircleDistance(
-                            residence.lat,
-                            residence.lng,
-                            s.lat,
-                            s.lng
-                          )
-                        : null;
-                      return (
-                        <div
-                          key={idx}
-                          className="bg-white/5 hover:bg-white/10 border border-rose-500/20 rounded-xl p-2.5 transition-colors flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-slate-100 truncate">{s.name}</p>
-                            <p className="text-[11px] text-slate-400 truncate">{s.en}</p>
-                            {dFromRes !== null && (
-                              <p className="text-[10px] text-amber-300/90 font-mono mt-0.5">
-                                📍 {dFromRes.toFixed(0)} m from residence{' '}
-                                {distance !== null && (
-                                  <span className="text-rose-300">
-                                    ({(distance - dFromRes).toFixed(0)} m closer than SSC)
-                                  </span>
-                                )}
-                              </p>
-                            )}
-                          </div>
-                          <span className="text-[11px] font-bold text-rose-400 shrink-0 font-mono bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
-                            -{categoryRule.perSchool} pts
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Category & Marks Card */}
+              {/* Category & Marks Selection Card */}
               <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl">
                 <h2 className="text-sm font-bold text-white flex items-center gap-2 mb-3 font-heading">
                   <Award className="w-4 h-4 text-amber-400" />
@@ -631,37 +829,334 @@ export default function App() {
                     <option value="Foreign Travel" className="bg-slate-900">
                       Foreign Travel (විදේශගතව පැමිණි) - 35 Max
                     </option>
+                    <option value="Education" className="bg-slate-900 text-amber-300 font-semibold">
+                      Education (අධ්‍යාපන ක්ෂේත්‍රයේ නිලධාරීන්) - 35 Max (Road Distance)
+                    </option>
                   </select>
                   <p className="text-[11px] text-slate-400 mt-1.5">{categoryRule.description}</p>
                 </div>
 
-                <div className="flex items-baseline justify-between py-2 border-t border-white/10">
-                  <span className="text-xs text-slate-300">Category Maximum</span>
-                  <span className="text-lg font-bold text-white font-mono">{maxMarks}</span>
-                </div>
-
-                <div className="flex items-baseline justify-between py-2 border-t border-white/10">
-                  <span className="text-xs text-slate-300">
-                    Deduction ({nearbySchools.length} × {categoryRule.perSchool})
-                  </span>
-                  <span className="text-sm font-bold text-rose-400 font-mono">- {deduction}</span>
-                </div>
-
-                {/* Net Marks Highlight */}
-                <div className="mt-3 p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 to-teal-900/40 border border-emerald-500/40 flex items-center justify-between shadow-lg">
+                {/* Score Summary Banner */}
+                <div className="mt-3 p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/70 to-teal-900/50 border border-emerald-500/40 flex items-center justify-between shadow-lg">
                   <div>
                     <span className="block text-xs font-semibold text-emerald-200">
-                      Final Net Marks
+                      Total Allocated Marks
                     </span>
                     <span className="text-[11px] text-emerald-300/80">
-                      {residence ? 'Score calculated' : 'Awaiting residence point'}
+                      {isEducationCategory
+                        ? residence && workplace
+                          ? 'Road distance calculated for both locations'
+                          : residence
+                            ? 'Awaiting workplace pin on map'
+                            : 'Set residence & workplace on map'
+                        : residence
+                          ? 'Score calculated'
+                          : 'Awaiting residence point'}
                     </span>
                   </div>
                   <div className="text-3xl font-extrabold text-emerald-300 font-mono">
-                    {residence ? netMarks : maxMarks}
+                    {netMarks} / {maxMarks}
                   </div>
                 </div>
               </div>
+
+              {/* SPECIFIC EVALUATION CARD: EDUCATION CATEGORY vs STANDARD CIRCLE */}
+              {isEducationCategory ? (
+                /* EDUCATION ROAD DISTANCE BREAKDOWN CARD */
+                <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-bold text-white flex items-center gap-2 font-heading">
+                        <Route className="w-4 h-4 text-sky-400" />
+                        Education Road Distance Evaluation
+                      </h2>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Road driving distance only · Circular deductions do not apply
+                      </p>
+                    </div>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono">
+                      {netMarks} / 35 Pts
+                    </span>
+                  </div>
+
+                  {/* 1. Permanent Address Section */}
+                  <div className="bg-white/5 border border-sky-500/30 rounded-xl p-3.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-sky-200 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                        1. Permanent Address → Sri Sumangala College
+                      </span>
+                      <span className="text-xs font-mono font-bold text-sky-300 bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/30">
+                        {residence ? `${residenceRoadMarks.marks} / 10 Marks` : '0 / 10 Marks'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between text-xs py-1 border-b border-white/10">
+                      <span className="text-slate-300">Shortest Road Distance</span>
+                      <span className="font-bold text-white font-mono text-sm">
+                        {residenceRoadKm !== null ? `${residenceRoadKm.toFixed(2)} km` : '—'}
+                      </span>
+                    </div>
+
+                    {residenceRoadDuration && (
+                      <div className="flex items-baseline justify-between text-[11px] py-1 text-slate-400">
+                        <span>Estimated Drive Time</span>
+                        <span className="font-mono text-slate-300">{residenceRoadDuration}</span>
+                      </div>
+                    )}
+
+                    {/* Criteria Scale for Residence */}
+                    <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-4 gap-1 text-center text-[10px]">
+                      <div
+                        className={`p-1 rounded border ${
+                          residenceRoadKm !== null && residenceRoadKm <= 1.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">&lt; 1 KM</div>
+                        <div className="text-emerald-400 font-bold">10 pts</div>
+                      </div>
+                      <div
+                        className={`p-1 rounded border ${
+                          residenceRoadKm !== null && residenceRoadKm > 1.0 && residenceRoadKm <= 3.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">1 - 3 KM</div>
+                        <div className="text-emerald-400 font-bold">8 pts</div>
+                      </div>
+                      <div
+                        className={`p-1 rounded border ${
+                          residenceRoadKm !== null && residenceRoadKm > 3.0 && residenceRoadKm <= 5.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">3 - 5 KM</div>
+                        <div className="text-emerald-400 font-bold">6 pts</div>
+                      </div>
+                      <div
+                        className={`p-1 rounded border ${
+                          residenceRoadKm !== null && residenceRoadKm > 5.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">&gt; 5 KM</div>
+                        <div className="text-emerald-400 font-bold">4 pts</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Workplace Section */}
+                  <div className="bg-white/5 border border-amber-500/30 rounded-xl p-3.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-amber-200 flex items-center gap-1.5">
+                        <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+                        2. Workplace → Sri Sumangala College
+                      </span>
+                      <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">
+                        {workplace ? `${workplaceRoadMarks.marks} / 25 Marks` : '0 / 25 Marks'}
+                      </span>
+                    </div>
+
+                    <div className="mb-2">
+                      <label className="block text-[10px] text-slate-400 mb-1">Workplace / Institution Name</label>
+                      <input
+                        type="text"
+                        value={workplaceName}
+                        onChange={(e) => setWorkplaceName(e.target.value)}
+                        placeholder="e.g. Zonal Education Office / School"
+                        className="w-full bg-white/10 border border-white/15 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div className="flex items-baseline justify-between text-xs py-1 border-b border-white/10">
+                      <span className="text-slate-300">Shortest Road Distance</span>
+                      <span className="font-bold text-white font-mono text-sm">
+                        {workplaceRoadKm !== null ? `${workplaceRoadKm.toFixed(2)} km` : '—'}
+                      </span>
+                    </div>
+
+                    {workplaceRoadDuration && (
+                      <div className="flex items-baseline justify-between text-[11px] py-1 text-slate-400">
+                        <span>Estimated Drive Time</span>
+                        <span className="font-mono text-slate-300">{workplaceRoadDuration}</span>
+                      </div>
+                    )}
+
+                    {/* Criteria Scale for Workplace */}
+                    <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-5 gap-1 text-center text-[9px]">
+                      <div
+                        className={`p-1 rounded border ${
+                          workplaceRoadKm !== null && workplaceRoadKm >= 100.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">&gt; 100 KM</div>
+                        <div className="text-emerald-400 font-bold">25 pts</div>
+                      </div>
+                      <div
+                        className={`p-1 rounded border ${
+                          workplaceRoadKm !== null && workplaceRoadKm >= 70.0 && workplaceRoadKm < 100.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">70-100 KM</div>
+                        <div className="text-emerald-400 font-bold">20 pts</div>
+                      </div>
+                      <div
+                        className={`p-1 rounded border ${
+                          workplaceRoadKm !== null && workplaceRoadKm >= 40.0 && workplaceRoadKm < 70.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">40-70 KM</div>
+                        <div className="text-emerald-400 font-bold">15 pts</div>
+                      </div>
+                      <div
+                        className={`p-1 rounded border ${
+                          workplaceRoadKm !== null && workplaceRoadKm >= 20.0 && workplaceRoadKm < 40.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">20-40 KM</div>
+                        <div className="text-emerald-400 font-bold">10 pts</div>
+                      </div>
+                      <div
+                        className={`p-1 rounded border ${
+                          workplaceRoadKm !== null && workplaceRoadKm < 20.0
+                            ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400 font-bold'
+                            : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        <div className="font-semibold">&lt; 20 KM</div>
+                        <div className="text-emerald-400 font-bold">5 pts</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* STANDARD CATEGORIES: CLOSER SCHOOLS DEDUCTION CARD */
+                <>
+                  {/* Location details card */}
+                  <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl">
+                    <h2 className="text-sm font-bold text-white flex items-center gap-2 mb-3.5 font-heading">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_#e9b949]"></span>
+                      Location & Distance Measurements
+                    </h2>
+                    <div className="divide-y divide-white/8 text-sm">
+                      <div className="py-2.5 flex justify-between items-baseline">
+                        <span className="text-slate-300">Distance to school (Radius)</span>
+                        <span className="font-bold text-white font-mono text-base">
+                          {distance !== null ? `${distance.toFixed(1)} m` : '—'}
+                        </span>
+                      </div>
+                      <div className="py-2 flex justify-between items-baseline">
+                        <span className="text-slate-400 text-xs">Distance in Kilometers</span>
+                        <span className="font-semibold text-slate-200 font-mono text-xs">
+                          {distance !== null ? `${(distance / 1000).toFixed(3)} km` : '—'}
+                        </span>
+                      </div>
+                      <div className="py-2 flex justify-between items-baseline">
+                        <span className="text-slate-300">Latitude</span>
+                        <span className="font-mono text-slate-200 text-xs">
+                          {residence ? residence.lat.toFixed(6) : '—'}
+                        </span>
+                      </div>
+                      <div className="py-2 flex justify-between items-baseline">
+                        <span className="text-slate-300">Longitude</span>
+                        <span className="font-mono text-slate-200 text-xs">
+                          {residence ? residence.lng.toFixed(6) : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Schools closer than SSC */}
+                  <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h2 className="text-sm font-bold text-white flex items-center gap-2 font-heading">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]"></span>
+                          Schools Closer to Residence
+                        </h2>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Inside circle (Center: Residence, Radius: {distance ? `${distance.toFixed(0)}m` : 'SSC'})
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                          nearbySchools.length === 0
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                        }`}
+                      >
+                        {nearbySchools.length} {nearbySchools.length === 1 ? 'school' : 'schools'}
+                      </span>
+                    </div>
+
+                    <div className="max-h-52 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                      {nearbySchools.length === 0 ? (
+                        <div className="text-center py-6 text-slate-300 text-xs bg-emerald-500/10 rounded-xl border border-emerald-500/20 px-3">
+                          {residence
+                            ? '✅ No closer schools found inside the residence circle! Zero deductions.'
+                            : 'Place an entering location on the map to evaluate closer schools.'}
+                        </div>
+                      ) : (
+                        nearbySchools.map((s, idx) => {
+                          const dFromRes = residence
+                            ? calculateGreatCircleDistance(
+                                residence.lat,
+                                residence.lng,
+                                s.lat,
+                                s.lng
+                              )
+                            : null;
+                          return (
+                            <div
+                              key={idx}
+                              className="bg-white/5 hover:bg-white/10 border border-rose-500/20 rounded-xl p-2.5 transition-colors flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-100 truncate">{s.name}</p>
+                                <p className="text-[11px] text-slate-400 truncate">{s.en}</p>
+                                {dFromRes !== null && (
+                                  <p className="text-[10px] text-amber-300/90 font-mono mt-0.5">
+                                    📍 {dFromRes.toFixed(0)} m from residence{' '}
+                                    {distance !== null && (
+                                      <span className="text-rose-300">
+                                        ({(distance - dFromRes).toFixed(0)} m closer than SSC)
+                                      </span>
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold text-rose-400 shrink-0 font-mono bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
+                                -{categoryRule.perSchool} pts
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Deductions line */}
+                    <div className="flex items-baseline justify-between pt-3 mt-3 border-t border-white/10 text-xs">
+                      <span className="text-slate-300">
+                        Total Deduction ({nearbySchools.length} × {categoryRule.perSchool})
+                      </span>
+                      <span className="text-sm font-bold text-rose-400 font-mono">- {deduction}</span>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Applicant Details & Print Actions */}
               <div className="bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-5 shadow-2xl">
@@ -694,9 +1189,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-300 mb-1">
-                      Parent / Guardian NIC
-                    </label>
+                    <label className="block text-xs text-slate-300 mb-1">Parent / Guardian NIC</label>
                     <input
                       type="text"
                       value={parentNic}
@@ -709,8 +1202,8 @@ export default function App() {
                   <div className="pt-1 flex items-start gap-2 text-xs text-slate-400">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                     <span>
-                      I certify that the information entered above and the residence location plotted
-                      are true and accurate for Grade 1 admission.
+                      I certify that the information entered above and the residence/workplace locations
+                      plotted are true and accurate for Grade 1 admission.
                     </span>
                   </div>
                 </div>
@@ -748,8 +1241,8 @@ export default function App() {
           {/* Footer */}
           <footer className="text-center text-xs text-slate-400 mt-10 mb-6 space-y-2 border-t border-white/10 pt-6">
             <p>
-              Sri Sumangala College, Panadura · Distance measured as straight-line (great-circle) from the college gate
-              (6.71007° N, 79.91440° E).
+              Sri Sumangala College, Panadura · Principal's Office (6.71007° N, 79.91440° E). Distance measurement system
+              compliant with Ministry of Education Grade 1 circular guidelines.
             </p>
             <div className="flex items-center justify-center gap-2 pt-1 font-medium text-slate-300">
               <SSCLogo className="w-5 h-6 drop-shadow" />
@@ -757,6 +1250,9 @@ export default function App() {
                 Developed By <strong className="text-amber-400 font-bold tracking-wide">SSCICTS</strong> (Sri Sumangala College ICT Society)
               </span>
             </div>
+            <p className="text-[10px] text-slate-500 font-normal tracking-wide pt-0.5">
+              Developed By Samithu Dewapriya  077613478
+            </p>
           </footer>
         </div>
       </div>
@@ -774,7 +1270,7 @@ export default function App() {
                     Printable Report Preview (Includes Map Area)
                   </span>
                   <span className="text-[11px] text-slate-400">
-                    Official Grade 1 Admission Geodetic Distance Verification
+                    Official Grade 1 Admission Distance Verification
                   </span>
                 </div>
               </div>
@@ -812,6 +1308,14 @@ export default function App() {
                 deduction={deduction}
                 netMarks={netMarks}
                 isPreview={true}
+                workplaceLocation={workplace}
+                workplaceName={workplaceName}
+                residenceRoadKm={residenceRoadKm}
+                workplaceRoadKm={workplaceRoadKm}
+                residenceRoadMarks={residenceRoadMarks}
+                workplaceRoadMarks={workplaceRoadMarks}
+                residenceRoadPath={residenceRoadPath}
+                workplaceRoadPath={workplaceRoadPath}
               />
             </div>
           </div>
@@ -831,6 +1335,14 @@ export default function App() {
         maxMarks={maxMarks}
         deduction={deduction}
         netMarks={netMarks}
+        workplaceLocation={workplace}
+        workplaceName={workplaceName}
+        residenceRoadKm={residenceRoadKm}
+        workplaceRoadKm={workplaceRoadKm}
+        residenceRoadMarks={residenceRoadMarks}
+        workplaceRoadMarks={workplaceRoadMarks}
+        residenceRoadPath={residenceRoadPath}
+        workplaceRoadPath={workplaceRoadPath}
       />
     </>
   );

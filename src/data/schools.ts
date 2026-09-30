@@ -50,7 +50,7 @@ export const SCHOOL_DATA: School[] = [
   { lat: 6.75285, lng: 79.90378, name: "බප/කළු/ ශ්‍රී තක්ශිලා කනිශ්ඨ විද්‍යාලය", en: "Sri Thakshila Junior Vidyalaya" }
 ];
 
-export type CategoryKey = "Closest Residence" | "Brotherhood" | "Transfer" | "Foreign Travel";
+export type CategoryKey = "Closest Residence" | "Brotherhood" | "Transfer" | "Foreign Travel" | "Education";
 
 export interface CategoryRule {
   name: CategoryKey;
@@ -58,6 +58,7 @@ export interface CategoryRule {
   max: number;
   perSchool: number;
   description: string;
+  isRoadDistance?: boolean;
 }
 
 export const CATEGORY_RULES: Record<CategoryKey, CategoryRule> = {
@@ -88,8 +89,66 @@ export const CATEGORY_RULES: Record<CategoryKey, CategoryRule> = {
     max: 35,
     perSchool: 3.5,
     description: "Maximum 35 marks. 3.5 marks deducted for each other school within residence radius."
+  },
+  "Education": {
+    name: "Education",
+    labelSinhala: "අධ්‍යාපන ක්ෂේත්‍රයේ නිලධාරීන්",
+    max: 35,
+    perSchool: 0,
+    description: "Shortest road distance calculation: Permanent Address (Max 10) + Workplace (Max 25). Road distance only (no air distance / circle deductions).",
+    isRoadDistance: true
   }
 };
+
+/**
+ * Permanent Address to Sri Sumangala College Shortest Road Distance Marks:
+ * - Inside 1 KM: 10 marks
+ * - 1 to 3 KM: 8 marks
+ * - 3 to 5 KM: 6 marks
+ * - 5 - upper: 4 marks
+ */
+export function getPermanentAddressRoadMarks(distKm: number | null): { marks: number; bracket: string } {
+  if (distKm === null || isNaN(distKm) || distKm < 0) {
+    return { marks: 0, bracket: 'Not evaluated' };
+  }
+  if (distKm <= 1.0) {
+    return { marks: 10, bracket: 'Inside 1 KM (10 Marks)' };
+  }
+  if (distKm <= 3.0) {
+    return { marks: 8, bracket: '1 to 3 KM (8 Marks)' };
+  }
+  if (distKm <= 5.0) {
+    return { marks: 6, bracket: '3 to 5 KM (6 Marks)' };
+  }
+  return { marks: 4, bracket: '5 KM & Upper (4 Marks)' };
+}
+
+/**
+ * Workplace to Sri Sumangala College Shortest Road Distance Marks:
+ * - upper 100: 25 marks
+ * - 100 to 70: 20 marks
+ * - 70 to 40: 15 marks
+ * - 40 to 20: 10 marks
+ * - below 20KM: 5 marks
+ */
+export function getWorkplaceRoadMarks(distKm: number | null): { marks: number; bracket: string } {
+  if (distKm === null || isNaN(distKm) || distKm < 0) {
+    return { marks: 0, bracket: 'Not evaluated' };
+  }
+  if (distKm >= 100.0) {
+    return { marks: 25, bracket: 'Upper 100 KM (25 Marks)' };
+  }
+  if (distKm >= 70.0) {
+    return { marks: 20, bracket: '100 to 70 KM (20 Marks)' };
+  }
+  if (distKm >= 40.0) {
+    return { marks: 15, bracket: '70 to 40 KM (15 Marks)' };
+  }
+  if (distKm >= 20.0) {
+    return { marks: 10, bracket: '40 to 20 KM (10 Marks)' };
+  }
+  return { marks: 5, bracket: 'Below 20 KM (5 Marks)' };
+}
 
 /**
  * Great-circle distance between two latitude/longitude points in metres

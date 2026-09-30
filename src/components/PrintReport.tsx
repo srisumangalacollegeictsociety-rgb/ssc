@@ -16,6 +16,15 @@ interface PrintReportProps {
   deduction: number;
   netMarks: number;
   isPreview?: boolean;
+  // Education Category Specifics
+  workplaceLocation?: { lat: number; lng: number } | null;
+  workplaceName?: string;
+  residenceRoadKm?: number | null;
+  workplaceRoadKm?: number | null;
+  residenceRoadMarks?: { marks: number; bracket: string };
+  workplaceRoadMarks?: { marks: number; bracket: string };
+  residenceRoadPath?: { lat: number; lng: number }[];
+  workplaceRoadPath?: { lat: number; lng: number }[];
 }
 
 export function PrintReport({
@@ -31,6 +40,14 @@ export function PrintReport({
   deduction,
   netMarks,
   isPreview = false,
+  workplaceLocation,
+  workplaceName = 'Applicant Workplace',
+  residenceRoadKm,
+  workplaceRoadKm,
+  residenceRoadMarks,
+  workplaceRoadMarks,
+  residenceRoadPath = [],
+  workplaceRoadPath = [],
 }: PrintReportProps) {
   const currentDate = new Date().toLocaleString('en-LK', {
     dateStyle: 'medium',
@@ -39,6 +56,8 @@ export function PrintReport({
 
   const residence =
     latitude !== null && longitude !== null ? { lat: latitude, lng: longitude } : null;
+
+  const isEducationCategory = category === 'Education';
 
   return (
     <div
@@ -59,7 +78,9 @@ export function PrintReport({
             Sri Sumangala College, Panadura (ශ්‍රී සුමංගල විද්‍යාලය, පාණදුර)
           </p>
           <p className="text-xs text-slate-600 mt-0.5">
-            Ministry of Education Circular Compliant · Straight-Line Great-Circle Geodetic Measurement
+            {isEducationCategory
+              ? 'Ministry of Education Circular Compliant · Shortest Road Distance Verification System (Education Staff Category)'
+              : 'Ministry of Education Circular Compliant · Straight-Line Great-Circle Geodetic Measurement'}
           </p>
         </div>
       </div>
@@ -80,27 +101,40 @@ export function PrintReport({
         </div>
         <div>
           <span className="block text-slate-500 font-semibold uppercase text-[10px]">Category:</span>
-          <span className="font-bold text-emerald-800">{category}</span>
+          <span className="font-bold text-emerald-800">
+            {category} {isEducationCategory ? '(අධ්‍යාපන ක්ෂේත්‍රයේ නිලධාරීන්)' : ''}
+          </span>
         </div>
       </div>
 
-      {/* MAP AREA (User explicitly requested map area in print) */}
+      {/* MAP AREA */}
       <div className="mb-5 break-inside-avoid">
         <div className="flex items-center justify-between mb-1.5 px-0.5">
           <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>
-            Cadastral Distance Verification Map Area
+            {isEducationCategory
+              ? 'Road Driving Distance Cadastral Verification Map Area'
+              : 'Cadastral Distance Verification Map Area'}
           </h2>
           <span className="text-[11px] text-slate-500 font-medium">
-            Circle Center: Applicant Residence · Radius: Distance to SSC ({distance ? `${distance.toFixed(0)}m` : '—'})
+            {isEducationCategory
+              ? `Permanent Address & Workplace Shortest Road Routes to SSC`
+              : `Circle Center: Applicant Residence · Radius: Distance to SSC (${distance ? `${distance.toFixed(0)}m` : '—'})`}
           </span>
         </div>
-        
+
         {/* Render High-Fidelity Vector Print Map */}
         <PrintMap
           residence={residence}
           distance={distance}
           nearbySchools={nearbySchools}
+          workplace={workplaceLocation}
+          workplaceName={workplaceName}
+          isEducationCategory={isEducationCategory}
+          residenceRoadKm={residenceRoadKm}
+          workplaceRoadKm={workplaceRoadKm}
+          residenceRoadPath={residenceRoadPath}
+          workplaceRoadPath={workplaceRoadPath}
         />
       </div>
 
@@ -108,63 +142,125 @@ export function PrintReport({
       <table className="w-full border-collapse text-xs mb-5 border border-slate-300">
         <tbody>
           <tr className="border-b border-slate-200 bg-slate-50">
-            <td className="py-2 px-3 font-semibold text-slate-700 w-2/5">Sri Sumangala College Gate Coordinates</td>
-            <td className="py-2 px-3 text-slate-900 font-mono">6.710070° N, 79.914400° E (Main Entrance Gate)</td>
+            <td className="py-2 px-3 font-semibold text-slate-700 w-2/5">Sri Sumangala College Principal's Office Coordinates</td>
+            <td className="py-2 px-3 text-slate-900 font-mono">6.710070° N, 79.914400° E (Principal's Office)</td>
           </tr>
-          <tr className="border-b border-slate-200">
-            <td className="py-2 px-3 font-semibold text-slate-700">Applicant Residence GPS Coordinates</td>
-            <td className="py-2 px-3 text-slate-900 font-mono font-medium">
-              {latitude !== null && longitude !== null
-                ? `${latitude.toFixed(6)}° N, ${longitude.toFixed(6)}° E`
-                : 'Not Set'}
-            </td>
-          </tr>
-          <tr className="border-b border-slate-200 bg-emerald-50/50">
-            <td className="py-2 px-3 font-bold text-slate-800">Straight-Line Geodesic Distance</td>
-            <td className="py-2 px-3 text-emerald-800 font-bold text-sm font-mono">
-              {distance !== null
-                ? `${distance.toFixed(1)} metres (${(distance / 1000).toFixed(3)} km)`
-                : '—'}
-            </td>
-          </tr>
-          <tr className="border-b border-slate-200">
-            <td className="py-2 px-3 font-semibold text-slate-700 align-top">
-              Schools Closer Than Sri Sumangala College ({nearbySchools.length})
-              <span className="block text-[10px] text-slate-500 font-normal">
-                (Located inside residence-centered circle)
-              </span>
-            </td>
-            <td className="py-2 px-3 text-slate-900">
-              {nearbySchools.length === 0 ? (
-                <span className="text-emerald-700 font-medium">None closer than SSC (0 deductions)</span>
-              ) : (
-                <div className="flex flex-wrap gap-1.5 py-1">
-                  {nearbySchools.map((school, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-block bg-orange-50 border border-orange-200 text-orange-900 px-2 py-0.5 rounded text-[11px]"
-                    >
-                      {idx + 1}. {school.en}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </td>
-          </tr>
-          <tr className="border-b border-slate-200">
-            <td className="py-2 px-3 font-semibold text-slate-700">Admission Category Allocated Marks</td>
-            <td className="py-2 px-3 text-slate-900 font-medium">
-              {category} · Maximum: <strong className="font-bold">{maxMarks} Marks</strong>
-            </td>
-          </tr>
-          <tr className="border-b border-slate-200">
-            <td className="py-2 px-3 font-semibold text-slate-700">Deduction (Intermediate Schools)</td>
-            <td className="py-2 px-3 text-red-600 font-semibold font-mono">
-              - {deduction} Marks ({nearbySchools.length} schools × {CATEGORY_RULES[category].perSchool} marks deduction)
-            </td>
-          </tr>
+
+          {isEducationCategory ? (
+            /* EDUCATION ROAD DISTANCE SYSTEM ROWS */
+            <>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700">Permanent Residence GPS Coordinates</td>
+                <td className="py-2 px-3 text-slate-900 font-mono font-medium">
+                  {latitude !== null && longitude !== null
+                    ? `${latitude.toFixed(6)}° N, ${longitude.toFixed(6)}° E`
+                    : 'Not Set'}
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200 bg-sky-50/60">
+                <td className="py-2 px-3 font-bold text-sky-900">
+                  1. Permanent Residence → School Shortest Road Distance
+                </td>
+                <td className="py-2 px-3 text-sky-950 font-bold text-xs font-mono">
+                  {residenceRoadKm !== null && residenceRoadKm !== undefined
+                    ? `${residenceRoadKm.toFixed(2)} km · Allocated: ${residenceRoadMarks?.marks ?? 0} / 10 Marks [${residenceRoadMarks?.bracket || ''}]`
+                    : 'Awaiting permanent residence location'}
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700">Workplace Institution & GPS Coordinates</td>
+                <td className="py-2 px-3 text-slate-900">
+                  <span className="font-semibold block">{workplaceName}</span>
+                  <span className="font-mono text-[11px] text-slate-600">
+                    {workplaceLocation
+                      ? `${workplaceLocation.lat.toFixed(6)}° N, ${workplaceLocation.lng.toFixed(6)}° E`
+                      : 'Not Set'}
+                  </span>
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200 bg-amber-50/60">
+                <td className="py-2 px-3 font-bold text-amber-900">
+                  2. Workplace → School Shortest Road Distance
+                </td>
+                <td className="py-2 px-3 text-amber-950 font-bold text-xs font-mono">
+                  {workplaceRoadKm !== null && workplaceRoadKm !== undefined
+                    ? `${workplaceRoadKm.toFixed(2)} km · Allocated: ${workplaceRoadMarks?.marks ?? 0} / 25 Marks [${workplaceRoadMarks?.bracket || ''}]`
+                    : 'Awaiting workplace location'}
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700">Admission Category Allocated Marks</td>
+                <td className="py-2 px-3 text-slate-900 font-medium">
+                  Education Category · Maximum: <strong className="font-bold">35 Marks</strong> (10 Residence + 25 Workplace)
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700">Evaluation Method</td>
+                <td className="py-2 px-3 text-slate-700">
+                  Strictly shortest road distance (no aerial distance / circular boundary deductions).
+                </td>
+              </tr>
+            </>
+          ) : (
+            /* STANDARD CATEGORIES ROWS */
+            <>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700">Applicant Residence GPS Coordinates</td>
+                <td className="py-2 px-3 text-slate-900 font-mono font-medium">
+                  {latitude !== null && longitude !== null
+                    ? `${latitude.toFixed(6)}° N, ${longitude.toFixed(6)}° E`
+                    : 'Not Set'}
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200 bg-emerald-50/50">
+                <td className="py-2 px-3 font-bold text-slate-800">Straight-Line Geodesic Distance</td>
+                <td className="py-2 px-3 text-emerald-800 font-bold text-sm font-mono">
+                  {distance !== null
+                    ? `${distance.toFixed(1)} metres (${(distance / 1000).toFixed(3)} km)`
+                    : '—'}
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700 align-top">
+                  Schools Closer Than Sri Sumangala College ({nearbySchools.length})
+                  <span className="block text-[10px] text-slate-500 font-normal">
+                    (Located inside residence-centered circle)
+                  </span>
+                </td>
+                <td className="py-2 px-3 text-slate-900">
+                  {nearbySchools.length === 0 ? (
+                    <span className="text-emerald-700 font-medium">None closer than SSC (0 deductions)</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 py-1">
+                      {nearbySchools.map((school, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-block bg-orange-50 border border-orange-200 text-orange-900 px-2 py-0.5 rounded text-[11px]"
+                        >
+                          {idx + 1}. {school.en}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700">Admission Category Allocated Marks</td>
+                <td className="py-2 px-3 text-slate-900 font-medium">
+                  {category} · Maximum: <strong className="font-bold">{maxMarks} Marks</strong>
+                </td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 px-3 font-semibold text-slate-700">Deduction (Intermediate Schools)</td>
+                <td className="py-2 px-3 text-red-600 font-semibold font-mono">
+                  - {deduction} Marks ({nearbySchools.length} schools × {CATEGORY_RULES[category].perSchool} marks deduction)
+                </td>
+              </tr>
+            </>
+          )}
+
           <tr className="border-b-2 border-slate-900 bg-slate-100">
-            <td className="py-2.5 px-3 font-bold text-slate-900 text-sm">Final Net Distance Marks Obtained</td>
+            <td className="py-2.5 px-3 font-bold text-slate-900 text-sm">Final Net Marks Obtained</td>
             <td className="py-2.5 px-3 text-emerald-800 font-bold text-lg font-mono">
               {netMarks} / {maxMarks} Marks
             </td>
@@ -198,6 +294,9 @@ export function PrintReport({
         <div className="mt-1 font-semibold text-slate-700 flex items-center justify-center gap-1.5">
           <SSCLogo className="w-3.5 h-4 inline-block" />
           <span>Developed By <strong className="text-emerald-800 font-bold">SSCICTS</strong> (Sri Sumangala College ICT Society)</span>
+        </div>
+        <div className="text-[9px] text-slate-400 mt-0.5 font-normal">
+          Developed By Samithu Dewapriya  077613478
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import {
   AdvancedMarker,
   InfoWindow,
   MapMouseEvent,
+  useMap,
 } from '@vis.gl/react-google-maps';
 import {
   SRI_SUMANGALA_CENTER,
@@ -20,6 +21,7 @@ import { MapOverlay } from './components/MapOverlay';
 import { PrintReport } from './components/PrintReport';
 import { SSCLogo } from './components/SSCLogo';
 import { fetchRoadRoute } from './utils/roadDistance';
+import { searchLocationQuery, SearchResult } from './utils/searchLocation';
 import {
   School as SchoolIcon,
   MapPin,
@@ -35,7 +37,8 @@ import {
   Building2,
   Route,
   Navigation,
-  Info,
+  Search,
+  Loader2,
 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY =
@@ -50,10 +53,38 @@ const WORKPLACE_PRESETS = [
   { name: 'Kandy Provincial Dept of Education', lat: 7.2906, lng: 80.6337, tier: '> 100 KM (25 pts)' },
 ];
 
+/**
+ * Controller to smoothly pan & zoom map to searched/chosen location
+ */
+function MapPanController({
+  targetLocation,
+}: {
+  targetLocation: { lat: number; lng: number } | null;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !targetLocation) return;
+    map.panTo(targetLocation);
+    const zoom = map.getZoom() || 15;
+    if (zoom < 15) {
+      map.setZoom(16);
+    }
+  }, [map, targetLocation]);
+  return null;
+}
+
 export default function App() {
-  const [mode, setMode] = useState<'click' | 'coords'>('click');
+  const [mode, setMode] = useState<'search' | 'click' | 'coords'>('search');
   const [mapTypeId, setMapTypeId] = useState<string>('hybrid');
   const [category, setCategory] = useState<CategoryKey>('Closest Residence');
+
+  // Search Location State
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState<boolean>(false);
+  const [panTarget, setPanTarget] = useState<{ lat: number; lng: number } | null>(null);
+  const [pinnedLocationName, setPinnedLocationName] = useState<string | null>(null);
 
   // Locations State
   const [residence, setResidence] = useState<{ lat: number; lng: number } | null>(null);
@@ -91,6 +122,31 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isEducationCategory = category === 'Education';
+
+  // Live Location Search (Debounced 300ms)
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      searchLocationQuery(trimmed)
+        .then((res) => {
+          setSearchResults(res);
+          setShowSearchDropdown(true);
+        })
+        .catch(() => {
+          setSearchResults([]);
+        })
+        .finally(() => setIsSearching(false));
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Compute straight line (air) distance from Sri Sumangala College to applicant residence
   const distance = useMemo(() => {
@@ -159,7 +215,6 @@ export default function App() {
   // Marks Calculation
   const categoryRule = CATEGORY_RULES[category];
 
-  // Education category road marks
   const residenceRoadMarks = useMemo(() => {
     return getPermanentAddressRoadMarks(residenceRoadKm);
   }, [residenceRoadKm]);
@@ -174,9 +229,48 @@ export default function App() {
     ? (residence ? residenceRoadMarks.marks : 0) + (workplace ? workplaceRoadMarks.marks : 0)
     : Math.max(0, maxMarks - deduction);
 
+  const handleSelectSearchResult = (result: SearchResult) => {
+    const pos = { lat: result.lat, lng: result.lng };
+    if (isEducationCategory && activeTarget === 'workplace') {
+      setWorkplace(pos);
+      setWorkplaceName(result.title);
+      setInputWorkLat(result.lat.toFixed(6));
+      setInputWorkLng(result.lng.toFixed(6));
+      setPinnedLocationName(`Workplace: ${result.title}`);
+    } else {
+      setResidence(pos);
+      setInputLat(result.lat.toFixed(6));
+      setInputLng(result.lng.toFixed(6));
+      setPinnedLocationName(`Residence: ${result.title}`);
+    }
+    setPanTarget(pos);
+    setShowSearchDropdown(false);
+    setErrorMsg(null);
+  };
+
+  const handleSearchSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    setIsSearching(true);
+    try {
+      const results = await searchLocationQuery(query);
+      setSearchResults(results);
+      if (results.length > 0) {
+        handleSelectSearchResult(results[0]);
+      } else {
+        setErrorMsg(`No locations found matching "${query}". Try searching a nearby road, town, or landmark.`);
+      }
+    } catch {
+      setErrorMsg('Location search failed. Please try again or click directly on the map.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const handleMapClick = useCallback(
     (e: MapMouseEvent) => {
-      if (mode !== 'click') return;
       if (e.detail.latLng) {
         const newPos = { lat: e.detail.latLng.lat, lng: e.detail.latLng.lng };
 
@@ -184,15 +278,18 @@ export default function App() {
           setWorkplace(newPos);
           setInputWorkLat(newPos.lat.toFixed(6));
           setInputWorkLng(newPos.lng.toFixed(6));
+          setPinnedLocationName(`Workplace pinned at ${newPos.lat.toFixed(4)}°, ${newPos.lng.toFixed(4)}°`);
         } else {
           setResidence(newPos);
           setInputLat(newPos.lat.toFixed(6));
           setInputLng(newPos.lng.toFixed(6));
+          setPinnedLocationName(`Residence pinned at ${newPos.lat.toFixed(4)}°, ${newPos.lng.toFixed(4)}°`);
         }
+        setPanTarget(newPos);
         setErrorMsg(null);
       }
     },
-    [mode, isEducationCategory, activeTarget]
+    [isEducationCategory, activeTarget]
   );
 
   const handleCheckCoordinates = () => {
@@ -208,11 +305,15 @@ export default function App() {
     }
     setErrorMsg(null);
 
+    const pos = { lat, lng };
     if (isTargetWorkplace) {
-      setWorkplace({ lat, lng });
+      setWorkplace(pos);
+      setPinnedLocationName(`Workplace coordinates applied`);
     } else {
-      setResidence({ lat, lng });
+      setResidence(pos);
+      setPinnedLocationName(`Residence coordinates applied`);
     }
+    setPanTarget(pos);
   };
 
   const handleUseMyLocation = () => {
@@ -230,25 +331,31 @@ export default function App() {
           setWorkplace(newPos);
           setInputWorkLat(newPos.lat.toFixed(6));
           setInputWorkLng(newPos.lng.toFixed(6));
+          setPinnedLocationName('Workplace set to Current GPS Location');
         } else {
           setResidence(newPos);
           setInputLat(newPos.lat.toFixed(6));
           setInputLng(newPos.lng.toFixed(6));
+          setPinnedLocationName('Residence set to Current GPS Location');
         }
+        setPanTarget(newPos);
       },
       (err) => {
         setLocatingUser(false);
-        setErrorMsg(`Unable to retrieve location: ${err.message}. Please enter coordinates manually.`);
+        setErrorMsg(`Unable to retrieve location: ${err.message}. Please search or enter coordinates manually.`);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
   const handleSelectWorkplacePreset = (preset: typeof WORKPLACE_PRESETS[0]) => {
-    setWorkplace({ lat: preset.lat, lng: preset.lng });
+    const pos = { lat: preset.lat, lng: preset.lng };
+    setWorkplace(pos);
     setWorkplaceName(preset.name);
     setInputWorkLat(preset.lat.toFixed(6));
     setInputWorkLng(preset.lng.toFixed(6));
+    setPanTarget(pos);
+    setPinnedLocationName(`Workplace: ${preset.name}`);
     setErrorMsg(null);
   };
 
@@ -264,6 +371,11 @@ export default function App() {
     setResidenceRoadPath([]);
     setWorkplaceRoadKm(null);
     setWorkplaceRoadPath([]);
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchDropdown(false);
+    setPanTarget(null);
+    setPinnedLocationName(null);
     setSelectedSchool(null);
     setShowCollegeInfo(false);
     setErrorMsg(null);
@@ -309,15 +421,27 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Map Column (7 cols on lg) */}
             <section className="lg:col-span-7 bg-white/6 border border-white/14 rounded-2xl backdrop-blur-xl p-3.5 md:p-4 shadow-2xl">
-              {/* Map Toolbar */}
+              {/* Map Mode Toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div className="inline-flex bg-black/40 border border-white/14 rounded-full p-1 gap-1">
                   <button
                     type="button"
+                    onClick={() => setMode('search')}
+                    className={`px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      mode === 'search'
+                        ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow-md font-bold'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Search location</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setMode('click')}
-                    className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
                       mode === 'click'
-                        ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow-md'
+                        ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow-md font-bold'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
@@ -326,9 +450,9 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setMode('coords')}
-                    className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all cursor-pointer ${
                       mode === 'coords'
-                        ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow-md'
+                        ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 shadow-md font-bold'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
@@ -352,13 +476,119 @@ export default function App() {
                 </div>
               </div>
 
+              {/* SEARCH LOCATION PANEL (Active when mode === 'search') */}
+              {mode === 'search' && (
+                <div className="mb-3.5 p-3.5 rounded-xl bg-black/35 border border-amber-400/30 animate-fadeIn relative">
+                  <form onSubmit={handleSearchSubmit} className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setShowSearchDropdown(true);
+                        }}
+                        onFocus={() => {
+                          if (searchResults.length > 0) setShowSearchDropdown(true);
+                        }}
+                        placeholder={
+                          isEducationCategory && activeTarget === 'workplace'
+                            ? 'Search workplace (e.g. Horana Zonal Office, Colombo, Kalutara, school)...'
+                            : 'Search residence address, road, town (e.g. Nalluruwa, Walana, Panadura)...'
+                        }
+                        className="w-full bg-white/10 border border-white/20 rounded-xl pl-9 pr-8 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/40"
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery('');
+                            setSearchResults([]);
+                            setShowSearchDropdown(false);
+                          }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSearching || !searchQuery.trim()}
+                      className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-bold text-xs rounded-xl shadow transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shrink-0"
+                    >
+                      {isSearching ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Search className="w-3.5 h-3.5" />
+                      )}
+                      <span>Search</span>
+                    </button>
+                  </form>
+
+                  {/* Autocomplete / Results dropdown */}
+                  {showSearchDropdown && searchResults.length > 0 && (
+                    <div className="absolute left-3.5 right-3.5 top-full mt-1.5 z-40 bg-slate-900/95 border border-amber-400/40 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl max-h-60 overflow-y-auto divide-y divide-white/10">
+                      {searchResults.map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleSelectSearchResult(item)}
+                          className="w-full text-left px-3.5 py-2.5 hover:bg-amber-400/15 transition-colors flex items-start gap-2.5 cursor-pointer text-slate-200 group"
+                        >
+                          <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-white group-hover:text-amber-200 truncate">
+                              {item.title}
+                            </p>
+                            {item.subtitle && (
+                              <p className="text-[11px] text-slate-400 truncate mt-0.5">{item.subtitle}</p>
+                            )}
+                            <p className="text-[10px] text-amber-400/80 font-mono mt-0.5">
+                              {item.lat.toFixed(5)}° N, {item.lng.toFixed(5)}° E
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quick Popular Location Chips */}
+                  <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center gap-1.5 flex-wrap text-[11px]">
+                    <span className="text-slate-400 text-[10px] shrink-0 font-medium">Quick locations:</span>
+                    {['Panadura Town', 'Walana', 'Nalluruwa', 'Pinwatta', 'Wadduwa', 'Horana Road', 'Dibbedda'].map(
+                      (place, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery(place);
+                            setIsSearching(true);
+                            searchLocationQuery(place)
+                              .then((res) => {
+                                if (res.length > 0) handleSelectSearchResult(res[0]);
+                              })
+                              .finally(() => setIsSearching(false));
+                          }}
+                          className="px-2 py-0.5 rounded bg-white/5 hover:bg-amber-400/20 text-slate-300 hover:text-amber-200 border border-white/10 hover:border-amber-400/30 transition-colors cursor-pointer text-[10px]"
+                        >
+                          {place}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* EDUCATION CATEGORY TARGET SWITCHER (Permanent Residence vs Workplace) */}
               {isEducationCategory && (
                 <div className="mb-3 p-2.5 rounded-xl bg-gradient-to-r from-blue-950/70 via-indigo-950/60 to-amber-950/50 border border-blue-400/30">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-sky-200 flex items-center gap-1.5">
                       <Route className="w-3.5 h-3.5 text-sky-400" />
-                      Education Category: Active Placement Pin
+                      Education Category: Active Target Pin
                     </span>
                     <span className="text-[10px] bg-blue-500/20 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full font-medium">
                       Road Distance Only (No Air Distance)
@@ -431,22 +661,7 @@ export default function App() {
                 </div>
               )}
 
-              <div className="text-xs text-slate-400 mb-2.5 flex items-center justify-between">
-                <span>
-                  {mode === 'click'
-                    ? isEducationCategory
-                      ? activeTarget === 'workplace'
-                        ? '🏢 Click on the map to set Workplace location.'
-                        : '🏠 Click on the map to set Permanent Address location.'
-                      : '🎯 Click anywhere on the map or drag the applicant marker to measure distance.'
-                    : '⌨️ Type coordinates, then click "Check distance".'}
-                </span>
-                <span className="text-amber-400/90 font-medium hidden sm:inline">
-                  {isEducationCategory ? 'Driving Road Network Active' : '35 Area Schools Mapped'}
-                </span>
-              </div>
-
-              {/* Coordinates Inputs Row */}
+              {/* Coordinates Inputs Row (Active when mode === 'coords') */}
               {mode === 'coords' && (
                 <div className="mb-3.5 p-3 rounded-xl bg-black/30 border border-white/10 flex flex-wrap items-end gap-3 animate-fadeIn">
                   <div className="flex-1 min-w-[130px]">
@@ -490,7 +705,7 @@ export default function App() {
                     onClick={handleCheckCoordinates}
                     className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 font-bold text-xs rounded-lg hover:shadow-lg transition-transform active:scale-95 cursor-pointer"
                   >
-                    Check distance
+                    Apply coordinates
                   </button>
                   <button
                     type="button"
@@ -499,7 +714,26 @@ export default function App() {
                     className="px-3 py-2 bg-white/10 hover:bg-white/15 border border-white/20 text-slate-200 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
                   >
                     <Crosshair className={`w-3.5 h-3.5 ${locatingUser ? 'animate-spin' : ''}`} />
-                    <span>{locatingUser ? 'Locating…' : 'My location'}</span>
+                    <span>{locatingUser ? 'Locating…' : 'My GPS location'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Status / Confirmation Badge */}
+              {pinnedLocationName && (
+                <div className="mb-2 px-3 py-1.5 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-xs flex items-center justify-between animate-fadeIn">
+                  <span className="flex items-center gap-1.5 truncate">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">
+                      Pinned: <strong className="text-white">{pinnedLocationName}</strong>
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPinnedLocationName(null)}
+                    className="text-emerald-400 hover:text-white text-xs cursor-pointer ml-2"
+                  >
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               )}
@@ -511,9 +745,27 @@ export default function App() {
                 </div>
               )}
 
+              {/* Helper prompt below toolbar */}
+              <div className="text-xs text-slate-400 mb-2.5 flex items-center justify-between">
+                <span>
+                  {mode === 'search'
+                    ? '🔍 Type an address, road, or town above to search and pin location automatically.'
+                    : mode === 'click'
+                      ? isEducationCategory
+                        ? activeTarget === 'workplace'
+                          ? '🏢 Click on the map to set Workplace location.'
+                          : '🏠 Click on the map to set Permanent Address location.'
+                        : '🎯 Click anywhere on the map or drag the applicant marker to measure distance.'
+                      : '⌨️ Type coordinates, then click "Apply coordinates".'}
+                </span>
+                <span className="text-amber-400/90 font-medium hidden sm:inline">
+                  {isEducationCategory ? 'Driving Road Network Active' : '35 Area Schools Mapped'}
+                </span>
+              </div>
+
               {/* Google Map Container */}
               <div className="w-full h-[540px] md:h-[600px] rounded-xl overflow-hidden border border-white/15 relative bg-[#0a1626]">
-                <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['routes']}>
+                <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['routes', 'places']}>
                   <Map
                     defaultCenter={{ lat: SRI_SUMANGALA_CENTER.lat, lng: SRI_SUMANGALA_CENTER.lng }}
                     defaultZoom={15}
@@ -526,6 +778,9 @@ export default function App() {
                     internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
                     className="w-full h-full"
                   >
+                    {/* Controller to smooth pan to search results */}
+                    <MapPanController targetLocation={panTarget} />
+
                     {/* Sri Sumangala College Marker */}
                     <AdvancedMarker
                       position={{ lat: SRI_SUMANGALA_CENTER.lat, lng: SRI_SUMANGALA_CENTER.lng }}
@@ -677,6 +932,7 @@ export default function App() {
                             setResidence(newPos);
                             setInputLat(newPos.lat.toFixed(6));
                             setInputLng(newPos.lng.toFixed(6));
+                            setPinnedLocationName(`Residence moved to ${newPos.lat.toFixed(4)}°, ${newPos.lng.toFixed(4)}°`);
                           }
                         }}
                       >
@@ -718,6 +974,7 @@ export default function App() {
                             setWorkplace(newPos);
                             setInputWorkLat(newPos.lat.toFixed(6));
                             setInputWorkLng(newPos.lng.toFixed(6));
+                            setPinnedLocationName(`Workplace moved to ${newPos.lat.toFixed(4)}°, ${newPos.lng.toFixed(4)}°`);
                           }
                         }}
                       >
@@ -759,7 +1016,7 @@ export default function App() {
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="flex items-center gap-1.5">
                     <SSCLogo className="w-3.5 h-4 inline-block" />
-                    Sri Sumangala College (Destination)
+                    Principal's Office (Destination)
                   </span>
 
                   {isEducationCategory ? (
@@ -847,8 +1104,8 @@ export default function App() {
                         ? residence && workplace
                           ? 'Road distance calculated for both locations'
                           : residence
-                            ? 'Awaiting workplace pin on map'
-                            : 'Set residence & workplace on map'
+                            ? 'Awaiting workplace location'
+                            : 'Set residence & workplace via search or map'
                         : residence
                           ? 'Score calculated'
                           : 'Awaiting residence point'}
@@ -884,7 +1141,7 @@ export default function App() {
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs font-bold text-sky-200 flex items-center gap-1.5">
                         <MapPin className="w-3.5 h-3.5 text-sky-400" />
-                        1. Permanent Address → Sri Sumangala College
+                        1. Permanent Address → Principal's Office
                       </span>
                       <span className="text-xs font-mono font-bold text-sky-300 bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/30">
                         {residence ? `${residenceRoadMarks.marks} / 10 Marks` : '0 / 10 Marks'}
@@ -955,7 +1212,7 @@ export default function App() {
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs font-bold text-amber-200 flex items-center gap-1.5">
                         <Briefcase className="w-3.5 h-3.5 text-amber-400" />
-                        2. Workplace → Sri Sumangala College
+                        2. Workplace → Principal's Office
                       </span>
                       <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">
                         {workplace ? `${workplaceRoadMarks.marks} / 25 Marks` : '0 / 25 Marks'}
@@ -1107,7 +1364,7 @@ export default function App() {
                         <div className="text-center py-6 text-slate-300 text-xs bg-emerald-500/10 rounded-xl border border-emerald-500/20 px-3">
                           {residence
                             ? '✅ No closer schools found inside the residence circle! Zero deductions.'
-                            : 'Place an entering location on the map to evaluate closer schools.'}
+                            : 'Search or place an entering location to evaluate closer schools.'}
                         </div>
                       ) : (
                         nearbySchools.map((s, idx) => {

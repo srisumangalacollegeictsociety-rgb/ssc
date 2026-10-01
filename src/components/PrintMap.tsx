@@ -189,7 +189,7 @@ export function PrintMap({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="w-full h-auto block"
-        style={{ maxHeight: '310px' }}
+        style={{ maxHeight: '250px' }}
       >
         <defs>
           <pattern id="printGrid" width="40" height="40" patternUnits="userSpaceOnUse">

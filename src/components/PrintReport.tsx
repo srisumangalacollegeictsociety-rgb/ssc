@@ -62,11 +62,11 @@ export function PrintReport({
   return (
     <div
       id={isPreview ? 'previewArea' : 'printArea'}
-      className={`${isPreview ? 'p-6 bg-white text-black max-w-4xl mx-auto rounded-xl shadow-2xl' : 'print-only p-8 text-black bg-white max-w-4xl mx-auto'} font-sans leading-relaxed`}
+      className={`${isPreview ? 'p-6 bg-white text-black max-w-4xl mx-auto rounded-xl shadow-2xl one-page' : 'print-only p-0 text-black bg-white max-w-4xl mx-auto one-page'} font-sans leading-relaxed`}
     >
       {/* College Header */}
-      <div className="flex items-center gap-5 border-b-2 border-[#12275e] pb-4 mb-5">
-        <SSCLogo className="w-16 h-20" />
+      <div className="flex items-center gap-5 border-b-2 border-[#12275e] pb-3 mb-3">
+        <SSCLogo className="w-14 h-[4.5rem]" />
         <div className="flex-1">
           <div className="text-[11px] uppercase tracking-wider text-emerald-800 font-bold">
             GRADE 1 · NEW KIDS REGISTRATION
@@ -86,7 +86,7 @@ export function PrintReport({
       </div>
 
       {/* Applicant Identification Box */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 border border-slate-300 rounded-lg p-3 text-xs mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 border border-slate-300 rounded-lg p-3 text-xs mb-3">
         <div>
           <span className="block text-slate-500 font-semibold uppercase text-[10px]">Application No:</span>
           <span className="font-bold text-slate-900 text-sm">{applicationNo || '—'}</span>
@@ -108,7 +108,7 @@ export function PrintReport({
       </div>
 
       {/* MAP AREA */}
-      <div className="mb-5 break-inside-avoid">
+      <div className="mb-3 break-inside-avoid">
         <div className="flex items-center justify-between mb-1.5 px-0.5">
           <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>
@@ -139,7 +139,7 @@ export function PrintReport({
       </div>
 
       {/* Measurement and Marks Calculation Table */}
-      <table className="w-full border-collapse text-xs mb-5 border border-slate-300">
+      <table className="w-full border-collapse text-xs mb-3 border border-slate-300 report-table">
         <tbody>
           <tr className="border-b border-slate-200 bg-slate-50">
             <td className="py-2 px-3 font-semibold text-slate-700 w-2/5">Sri Sumangala College Principal's Office Coordinates</td>
@@ -273,15 +273,15 @@ export function PrintReport({
       </table>
 
       {/* Official Signatures & Seal Verification */}
-      <div className="mt-8 pt-4 border-t border-slate-400 grid grid-cols-2 gap-8 text-xs break-inside-avoid">
+      <div className="mt-4 pt-3 border-t border-slate-400 grid grid-cols-2 gap-8 text-xs break-inside-avoid">
         <div>
-          <p className="text-slate-800 font-semibold mb-10">Parent / Guardian Signature:</p>
+          <p className="text-slate-800 font-semibold mb-7">Parent / Guardian Signature:</p>
           <div className="border-b border-slate-400 w-4/5 mb-1"></div>
           <p className="text-[11px] text-slate-500">Name: ___________________________________</p>
           <p className="text-[11px] text-slate-500 mt-1">Date: ___________________________________</p>
         </div>
         <div>
-          <p className="text-slate-800 font-semibold mb-10">Officer in Charge Verification:</p>
+          <p className="text-slate-800 font-semibold mb-7">Officer in Charge Verification:</p>
           <div className="border-b border-slate-400 w-4/5 mb-1"></div>
           <p className="text-[11px] text-slate-500">Signature & Official School Seal</p>
           <p className="text-[11px] text-slate-500 mt-1">Date: ___________________________________</p>
@@ -289,7 +289,7 @@ export function PrintReport({
       </div>
 
       {/* Official Footer with SSCICTS branding */}
-      <div className="mt-6 pt-3 border-t border-slate-200 text-center text-[10px] text-slate-500 leading-tight">
+      <div className="mt-3 pt-2 border-t border-slate-200 text-center text-[10px] text-slate-500 leading-tight">
         <div>Principal — W. T. Raweendra Pushpakumara · Sri Sumangala College, Panadura · © All rights reserved.</div>
         <div className="mt-1 font-semibold text-slate-700 flex items-center justify-center gap-1.5">
           <SSCLogo className="w-3.5 h-4 inline-block" />

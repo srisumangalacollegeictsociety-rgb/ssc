@@ -40,6 +40,37 @@
   .print-only {
     display: block !important;
   }
+
+  html, body {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* Force the report onto a single A4 page */
+  #printArea {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+    max-height: 272mm !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  #printArea .report-table td {
+    padding-top: 3px !important;
+    padding-bottom: 3px !important;
+  }
+
+  #printArea svg {
+    max-height: 235px !important;
+    width: 100% !important;
+  }
 }
 
 @media screen {
